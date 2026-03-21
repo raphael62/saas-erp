@@ -1,0 +1,2 @@
+customer_code,customer_name,business_name,mobile,email,business_address,customer_type,price_type,business_executive,credit_limit,call_days,status
+C0001,Acme Retail,Acme Retail Ltd,+256700000001,accounts@acme.com,Kampala Central,Retail,Retail Price,John Doe,500000.00,30,Active

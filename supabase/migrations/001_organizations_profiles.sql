@@ -57,8 +57,8 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- Run in Supabase SQL editor if auth trigger not already set:
--- drop trigger if exists on_auth_user_created on auth.users;
--- create trigger on_auth_user_created
---   after insert on auth.users
---   for each row execute procedure public.handle_new_user();
+-- Create profile automatically when a new user signs up
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();

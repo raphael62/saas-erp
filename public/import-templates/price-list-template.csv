@@ -1,0 +1,2 @@
+price_list_name,price_type,effective_date,expiry_date,notes,product_code,product_name,pack_unit,price_tax_inc,tax_rate,vat_type,status
+Wholesale April,Wholesale Price,2026-04-01,2026-04-30,Q2 promo list,P001,Blue Detergent 1L,12,12500.00,0,inc,Active

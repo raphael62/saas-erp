@@ -1,0 +1,2 @@
+product_code,product_name,brand_category,unit_of_measure,pack_unit,empties_type,reorder_level,reorder_quantity,barcode,supplier,description,taxable,returnable,status
+P001,Blue Detergent 1L,Detergents,Bottle,12,Plastic,50,120,1234567890123,Default Supplier,Sample item,true,false,Active

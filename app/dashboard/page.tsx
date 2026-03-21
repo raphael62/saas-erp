@@ -1,45 +1,96 @@
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 import Link from "next/link";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ActivitiesPanel } from "@/components/dashboard/activities-panel";
+import { QuickActions } from "@/components/dashboard/quick-actions";
 
-const modules = [
-  { title: "Sales", href: "/dashboard/sales", desc: "Orders and customers", stat: "—" },
-  { title: "Purchases", href: "/dashboard/purchases", desc: "Suppliers and POs", stat: "—" },
-  { title: "Inventory", href: "/dashboard/inventory", desc: "Stock and movements", stat: "—" },
-];
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-export default function DashboardPage() {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("organization_id")
+    .eq("id", user.id)
+    .single();
+
+  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
+
+  let productCount = 0;
+  let customerCount = 0;
+  let lowStockCount = 0;
+
+  if (orgId) {
+    const productsRes = await supabase.from("products").select("id, stock_quantity, min_stock").eq("organization_id", orgId);
+    const products = (productsRes.data ?? []) as { stock_quantity: number; min_stock: number }[];
+    productCount = products.length;
+    lowStockCount = products.filter((p) => Number(p.stock_quantity) <= Number(p.min_stock) && Number(p.min_stock) > 0).length;
+
+    try {
+      const customersRes = await supabase.from("customers").select("id", { count: "exact", head: true }).eq("organization_id", orgId);
+      customerCount = customersRes.count ?? 0;
+    } catch {
+      // customers table may not exist yet; run ADD_CUSTOMERS.sql
+    }
+  }
+
+  const modules = [
+    { title: "Sales", href: "/dashboard/sales", desc: "Orders and customers", stat: customerCount },
+    { title: "Purchases", href: "/dashboard/purchases", desc: "Suppliers and POs", stat: "—" },
+    { title: "Inventory", href: "/dashboard/inventory", desc: "Stock and movements", stat: productCount },
+  ];
+
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          Overview of your ERP modules. Connect Supabase and add data to see live stats.
-        </p>
+        <p className="text-muted-foreground mt-1">Overview of your ERP modules</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {modules.map((item) => (
-          <Link
-            key={item.title}
-            href={item.href}
-            className="group rounded-xl border border-border bg-card p-5 transition-colors hover:border-muted-foreground/30 hover:bg-muted/50"
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="font-semibold text-foreground group-hover:underline">{item.title}</h2>
-                <p className="text-sm text-muted-foreground mt-1">{item.desc}</p>
-              </div>
-              <span className="rounded-md bg-muted px-2 py-1 text-sm font-medium text-muted-foreground">
-                {item.stat}
-              </span>
-            </div>
-          </Link>
-        ))}
-      </div>
-
-      <div className="rounded-xl border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-        <strong className="text-foreground">Next steps:</strong> Run the SQL in{" "}
-        <code className="rounded bg-muted px-1">supabase/migrations/001_organizations_profiles.sql</code>{" "}
-        in your Supabase project, then add the auth trigger so new signups get a profile.
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {modules.map((item) => (
+              <Link key={item.title} href={item.href}>
+                <Card className="h-full transition-colors hover:bg-muted/50">
+                  <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+                    <CardTitle className="text-base">{item.title}</CardTitle>
+                    <span className="rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+                      {item.stat}
+                    </span>
+                  </CardHeader>
+                  <CardContent>
+                    <CardDescription>{item.desc}</CardDescription>
+                    <Button variant="secondary" size="sm" className="mt-3" asChild>
+                      <span>Open</span>
+                    </Button>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Quick actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <QuickActions />
+            </CardContent>
+          </Card>
+        </div>
+        <div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Activities</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ActivitiesPanel productCount={productCount} customerCount={customerCount} lowStockCount={lowStockCount} />
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );

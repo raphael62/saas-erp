@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function RegisterPage() {
         password,
         options: {
           emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin}/auth/callback`,
+          data: { organization_name: companyName.trim() || undefined },
         },
       });
       if (signUpError) {
@@ -41,6 +43,19 @@ export default function RegisterPage() {
       <div className="w-full max-w-sm space-y-6">
         <h1 className="text-2xl font-semibold text-center">Sign up</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="company" className="block text-sm font-medium mb-1">
+              Company / Organization name
+            </label>
+            <input
+              id="company"
+              type="text"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              placeholder="Acme Inc"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            />
+          </div>
           <div>
             <label htmlFor="email" className="block text-sm font-medium mb-1">
               Email

@@ -2,6 +2,12 @@
 
 Multi-tenant ERP built with **Next.js**, **TypeScript**, **Supabase**, **Stripe**, and **Vercel**.
 
+## Canonical Repository
+
+- This folder/repo (`saas-erp`) is the single source of truth for the SaaS ERP project.
+- Use Supabase SQL files under `supabase/` for schema and migrations.
+- Do not add or maintain parallel project folders for this product.
+
 ## Stack
 
 - **Next.js 15** (App Router)
@@ -31,11 +37,11 @@ Copy `.env.example` to `.env.local` and set:
 
 ### 3. Database (Supabase)
 
-In the Supabase SQL editor, run the migration:
+In the [Supabase Dashboard](https://supabase.com/dashboard) → your project → **SQL Editor**, run the full migration file:
 
 - `supabase/migrations/001_organizations_profiles.sql`
 
-Then enable the trigger for new user signups (see comment at the bottom of that file).
+It creates `organizations`, `profiles`, RLS policies, and a trigger that creates a profile for each new signup.
 
 ### 4. Run the app
 

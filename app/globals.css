@@ -22,6 +22,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.809 0.105 251.813);
@@ -37,6 +38,10 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --navbar: oklch(0.55 0.22 25);
+  --navbar-foreground: oklch(0.985 0 0);
+  --form-input-font-size: 0.875rem;
+  --form-input-line-height: 1.25rem;
 }
 
 .dark {
@@ -56,6 +61,7 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.809 0.105 251.813);
@@ -71,6 +77,10 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  --navbar: oklch(0.55 0.22 25);
+  --navbar-foreground: oklch(0.985 0 0);
+  --form-input-font-size: 0.875rem;
+  --form-input-line-height: 1.25rem;
 }
 
 @theme inline {
@@ -83,7 +93,7 @@
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 2px);
-  --font-sans: var(--font-sans);
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -109,6 +119,8 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
+  --color-navbar: var(--navbar);
+  --color-navbar-foreground: var(--navbar-foreground);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
@@ -116,7 +128,7 @@
 }
 
 body {
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
 @layer base {
@@ -128,5 +140,11 @@ body {
   }
   html {
     @apply font-sans;
+  }
+
+  /* Global form typography standard: all input forms use text-sm. */
+  form :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    font-size: var(--form-input-font-size) !important;
+    line-height: var(--form-input-line-height) !important;
   }
 }
