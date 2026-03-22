@@ -104,13 +104,18 @@ export async function getPosPerformance(
 
   if (targetsErr) return { reps: [], summary: defaultSummary(), error: targetsErr.message };
 
-  let targets = (ssrTargets ?? []) as Array<{
+  const rawTargets = (ssrTargets ?? []) as Array<{
     id: string;
     sales_rep_id: string;
     target_value?: number | null;
     commission_pct?: number | null;
-    sales_reps?: { id: string; code?: string | null; name: string } | null;
+    sales_reps?: { id: string; code?: string | null; name: string } | { id: string; code?: string | null; name: string }[] | null;
   }>;
+  let targets = rawTargets.map((t) => {
+    const sr = t.sales_reps;
+    const rep = Array.isArray(sr) ? sr[0] : sr;
+    return { ...t, sales_reps: rep ?? null };
+  });
 
   if (salesRepId?.trim()) {
     targets = targets.filter((t) => t.sales_rep_id === salesRepId.trim());
