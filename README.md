@@ -37,11 +37,12 @@ Copy `.env.example` to `.env.local` and set:
 
 ### 3. Database (Supabase)
 
-In the [Supabase Dashboard](https://supabase.com/dashboard) → your project → **SQL Editor**, run the full migration file:
+In the [Supabase Dashboard](https://supabase.com/dashboard) → your project → **SQL Editor**, run migrations in order (or use `supabase db push` if the project is linked):
 
-- `supabase/migrations/001_organizations_profiles.sql`
+- `supabase/migrations/001_organizations_profiles.sql` — organizations, profiles, RLS, signup trigger
+- Additional numbered migrations under `supabase/migrations/` for products, sales, POS, etc.
 
-It creates `organizations`, `profiles`, RLS policies, and a trigger that creates a profile for each new signup.
+**Point of Sale:** after base sales tables exist, run `supabase/migrations/018_pos_sales_extensions.sql` so POS can store `empties_value`, `payment_method`, `cashier_id`, and line `is_promo`. Without it, `savePosSale` will fail when inserting invoices.
 
 ### 4. Run the app
 
@@ -64,6 +65,7 @@ Use the printed webhook secret in `.env.local` as `STRIPE_WEBHOOK_SECRET`.
 ## Project structure
 
 - `app/` – Routes (login, register, dashboard, API)
+- `app/dashboard/pos/` – POS (new sale, parked sales, receipts search/reprint, daily payments)
 - `lib/supabase/` – Supabase client (browser, server, middleware)
 - `supabase/migrations/` – SQL migrations for Supabase
 - `app/api/webhooks/stripe/` – Stripe webhook handler

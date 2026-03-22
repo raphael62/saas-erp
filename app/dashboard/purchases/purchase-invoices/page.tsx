@@ -104,7 +104,7 @@ export default async function PurchaseInvoicesPage({
   return (
     <div>
       <PurchaseInvoiceList
-        invoices={invoices as Parameters<typeof PurchaseInvoiceList>[0]["invoices"]}
+        invoices={invoices as unknown as Parameters<typeof PurchaseInvoiceList>[0]["invoices"]}
         lines={lines as Parameters<typeof PurchaseInvoiceList>[0]["lines"]}
         products={products as Parameters<typeof PurchaseInvoiceList>[0]["products"]}
         suppliers={suppliers as Parameters<typeof PurchaseInvoiceList>[0]["suppliers"]}

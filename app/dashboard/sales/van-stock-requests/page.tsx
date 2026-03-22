@@ -109,7 +109,7 @@ export default async function VanStockRequestsPage({
         <span className="text-foreground">Van Stock Requests</span>
       </nav>
       <VanStockRequestList
-        requests={requests as Parameters<typeof VanStockRequestList>[0]["requests"]}
+        requests={requests as unknown as Parameters<typeof VanStockRequestList>[0]["requests"]}
         lines={lines as Parameters<typeof VanStockRequestList>[0]["lines"]}
         reps={reps as Parameters<typeof VanStockRequestList>[0]["reps"]}
         locations={locations as Parameters<typeof VanStockRequestList>[0]["locations"]}

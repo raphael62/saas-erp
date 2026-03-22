@@ -135,7 +135,7 @@ export default async function SalesInvoicesPage({
 
   return (
     <SalesInvoiceList
-      invoices={invoices as Parameters<typeof SalesInvoiceList>[0]["invoices"]}
+      invoices={invoices as unknown as Parameters<typeof SalesInvoiceList>[0]["invoices"]}
       lines={lines as Parameters<typeof SalesInvoiceList>[0]["lines"]}
       products={products as Parameters<typeof SalesInvoiceList>[0]["products"]}
       customers={customers as Parameters<typeof SalesInvoiceList>[0]["customers"]}

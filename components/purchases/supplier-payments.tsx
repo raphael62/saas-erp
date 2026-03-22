@@ -132,7 +132,7 @@ function SupplierPaymentsContent({
     if (!confirm("Delete this payment?")) return;
     const res = await deleteSupplierPayment(selected.id);
     if ("error" in res) {
-      setMessage(res.error);
+      setMessage(res.error ?? "Unknown error");
       return;
     }
     setMessage("Payment deleted.");
@@ -624,7 +624,7 @@ function SinglePaymentDialog({
               });
               setPending(false);
               if ("error" in res) {
-                setError(res.error);
+                setError(res.error ?? "Unknown error");
                 return;
               }
               onSaved();
@@ -1017,7 +1017,7 @@ function BatchPaymentDialog({
               });
               setPending(false);
               if ("error" in res) {
-                setError(res.error);
+                setError(res.error ?? "Unknown error");
                 return;
               }
               onSaved();

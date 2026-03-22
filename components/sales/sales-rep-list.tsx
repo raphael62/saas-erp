@@ -20,7 +20,15 @@ type SalesRep = {
   is_active?: boolean;
 };
 
-export function SalesRepList({ salesReps }: { salesReps: SalesRep[] }) {
+type Location = { id: string; code?: string | null; name: string };
+
+export function SalesRepList({
+  salesReps,
+  locations = [],
+}: {
+  salesReps: SalesRep[];
+  locations?: Location[];
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showForm, setShowForm] = useState(searchParams.get("add") === "1");
@@ -232,6 +240,7 @@ export function SalesRepList({ salesReps }: { salesReps: SalesRep[] }) {
         }}
         onSaved={() => router.refresh()}
         initialSalesRep={editingSalesRep}
+        locations={locations}
       />
 
       <div className="max-h-[calc(100vh-18rem)] overflow-auto rounded border border-border">

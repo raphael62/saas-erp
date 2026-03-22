@@ -125,7 +125,7 @@ export default async function LoadOutSheetsPage({
         <span className="text-foreground">Load Out Sheets</span>
       </nav>
       <LoadOutSheetList
-        sheets={sheets as Parameters<typeof LoadOutSheetList>[0]["sheets"]}
+        sheets={sheets as unknown as Parameters<typeof LoadOutSheetList>[0]["sheets"]}
         lines={lines as Parameters<typeof LoadOutSheetList>[0]["lines"]}
         reps={reps as Parameters<typeof LoadOutSheetList>[0]["reps"]}
         locations={locations as Parameters<typeof LoadOutSheetList>[0]["locations"]}

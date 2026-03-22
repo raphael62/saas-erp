@@ -104,7 +104,7 @@ export default async function EmptiesDispatchPage({
   return (
     <div>
       <EmptiesDispatchList
-        dispatches={dispatches as Parameters<typeof EmptiesDispatchList>[0]["dispatches"]}
+        dispatches={dispatches as unknown as Parameters<typeof EmptiesDispatchList>[0]["dispatches"]}
         lines={lines as Parameters<typeof EmptiesDispatchList>[0]["lines"]}
         suppliers={suppliers as Parameters<typeof EmptiesDispatchList>[0]["suppliers"]}
         locations={locations as Parameters<typeof EmptiesDispatchList>[0]["locations"]}

@@ -664,10 +664,6 @@ export function LoadOutSheetList({
               </div>
             ))}
           </div>
-          <p className="text-muted-foreground text-[11px]">
-            Daily target = sum of (VSR target qty ÷ month days excluding Sundays) for each product line. Month has{" "}
-            <span className="font-medium tabular-nums">{kpis.workingDays}</span> non-Sunday days.
-          </p>
 
           <div>
             <div className="mb-1 text-xs font-medium">LoadOut achievement</div>

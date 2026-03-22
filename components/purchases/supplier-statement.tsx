@@ -114,7 +114,7 @@ export function SupplierStatement({ orgName }: { orgName?: string }) {
     setError(null);
     const res = await getSupplierStatement(fromDate, toDate);
     if ("error" in res) {
-      setError(res.error);
+      setError(res.error ?? "Unknown error");
       setRows([]);
       setPaymentsMissing(false);
       setEmptiesMissing(false);
@@ -171,7 +171,7 @@ export function SupplierStatement({ orgName }: { orgName?: string }) {
 
     const res = await getSupplierStatementTransactions(row.supplier_id, fromDate, toDate, filter);
     if ("error" in res) {
-      setTxError(res.error);
+      setTxError(res.error ?? "Unknown error");
       setTxLoading(false);
       return;
     }
@@ -563,26 +563,17 @@ export function SupplierStatement({ orgName }: { orgName?: string }) {
                     <td className="border-b border-r border-border px-2 py-1.5 text-xs">{idx + 1}</td>
                     <td className="border-b border-r border-border px-2 py-1.5 text-center">
                       {row.tx_kind === "purchase_invoice" ? (
-                        <FileText className="mx-auto h-3.5 w-3.5 text-blue-600 dark:text-blue-400" title="Purchase Invoice" />
+                        <span title="Purchase Invoice"><FileText className="mx-auto h-3.5 w-3.5 text-blue-600 dark:text-blue-400" /></span>
                       ) : row.tx_kind === "purchase_invoice_empties" ? (
                         row.description === "Empties Purchase" ? (
-                          <RefreshCcw
-                            className="mx-auto h-3.5 w-3.5 text-teal-600 dark:text-teal-400"
-                            title="Empties Purchase"
-                          />
+                          <span title="Empties Purchase"><RefreshCcw className="mx-auto h-3.5 w-3.5 text-teal-600 dark:text-teal-400" /></span>
                         ) : (
-                          <Package
-                            className="mx-auto h-3.5 w-3.5 text-violet-700 dark:text-violet-400"
-                            title="Empties Invoice"
-                          />
+                          <span title="Empties Invoice"><Package className="mx-auto h-3.5 w-3.5 text-violet-700 dark:text-violet-400" /></span>
                         )
                       ) : row.tx_kind === "empties_dispatch" ? (
-                        <Recycle className="mx-auto h-3.5 w-3.5 text-amber-700 dark:text-amber-400" title="Empties Dispatch" />
+                        <span title="Empties Dispatch"><Recycle className="mx-auto h-3.5 w-3.5 text-amber-700 dark:text-amber-400" /></span>
                       ) : (
-                        <Wallet
-                          className="mx-auto h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400"
-                          title="Payments"
-                        />
+                        <span title="Payments"><Wallet className="mx-auto h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" /></span>
                       )}
                     </td>
                     <td className="border-b border-r border-border px-2 py-1.5">{row.tx_date}</td>

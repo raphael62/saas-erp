@@ -152,6 +152,7 @@ export const mainNavItems: MainNavItem[] = [
       { href: "/dashboard/accounting/payment-accounts", label: "Bank & Cash Accounts", icon: Landmark },
       { href: "/dashboard/sales/customer-payments", label: "Customer Payments", icon: Wallet },
       { href: "/dashboard/accounting/supplier-payments", label: "Supplier Payments", icon: Wallet },
+      { href: "/dashboard/accounting/bank-transfers", label: "Bank Transfers", icon: ArrowLeftRight },
       { href: "/dashboard/accounting/bank-reconciliation", label: "Bank Reconciliation", icon: Calculator, badge: "Future" },
       { href: "/dashboard/accounting/ar-aging", label: "AR Aging", icon: Clock },
       { href: "/dashboard/accounting/ap-aging", label: "AP Aging", icon: Clock, badge: "Future" },

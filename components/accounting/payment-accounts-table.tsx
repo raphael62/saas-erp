@@ -186,9 +186,10 @@ export function PaymentAccountsTable({
                   <td className="px-3 py-2 font-medium">{acc.code}</td>
                   <td className="px-3 py-2">{acc.name}</td>
                   <td className="px-3 py-2 text-muted-foreground">
-                    {acc.chart_of_accounts
-                      ? `${acc.chart_of_accounts.account_name} (${acc.chart_of_accounts.account_code})`
-                      : "—"}
+                    {(() => {
+                      const ca = getChartAccount(acc.chart_of_account_id);
+                      return ca ? `${ca.account_name} (${ca.account_code})` : "—";
+                    })()}
                   </td>
                   <td className="px-3 py-2 capitalize">{acc.account_type}</td>
                   <td className="px-3 py-2">

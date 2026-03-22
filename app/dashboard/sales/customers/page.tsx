@@ -51,7 +51,7 @@ export default async function CustomersPage() {
   return (
     <div>
       <CustomerList
-        customers={(customers ?? []) as Parameters<typeof CustomerList>[0]["customers"]}
+        customers={(customers ?? []) as unknown as Parameters<typeof CustomerList>[0]["customers"]}
         salesReps={salesReps}
         customerTypes={customerTypes}
         priceTypes={priceTypes}

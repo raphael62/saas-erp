@@ -73,7 +73,7 @@ export default async function PriceListPage() {
       <PriceList
         products={products as Parameters<typeof PriceList>[0]["products"]}
         priceTypes={priceTypes as Parameters<typeof PriceList>[0]["priceTypes"]}
-        priceLists={priceLists as Parameters<typeof PriceList>[0]["priceLists"]}
+        priceLists={priceLists as unknown as Parameters<typeof PriceList>[0]["priceLists"]}
         priceListItems={priceListItems as Parameters<typeof PriceList>[0]["priceListItems"]}
       />
     </div>

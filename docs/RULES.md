@@ -105,6 +105,30 @@ Navigation items are filtered by user role. Users only see menus they are author
 
 ---
 
+## Business Formulas
+
+### Daily target (system-wide)
+
+**Formula:** Daily target = Total target ÷ (month days − Sundays)
+
+Working days = calendar days in the month excluding Sundays. Used for:
+- POS/SSR daily sales targets and commission tracking
+- VSR daily target quantities on load-out sheets
+- “Expected by today” and qualifying-day calculations
+
+**Implementation:** `lib/month-working-days.ts` — `dailyTargetFromMonthly()`, `countMonthDaysExcludingSundays()`
+
+### Commission (POS/SSR)
+
+**Rule:** Commission is earned daily, only when 100% of that day's target is achieved.
+- For each day: if daily sales ≥ daily target → commission = daily sales × commission %; else → 0 (lost)
+- No monthly roll-up: if you miss the daily target, that day's commission is lost
+- Commission earned = sum over qualifying days (sales ≥ target) of (that day's net sales × commission %)
+- Full commission = monthly target × commission % (reference / cap)
+- Commission at risk = max(0, full commission − commission earned)
+
+---
+
 ## Setup (SQL to run)
 
 - `RUN_THIS_IN_SUPABASE.sql` – base schema (organizations, profiles, auth trigger, org insert policy)

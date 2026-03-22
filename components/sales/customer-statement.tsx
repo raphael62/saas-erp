@@ -71,7 +71,7 @@ export function CustomerStatement({ orgName }: { orgName?: string }) {
     setError(null);
     const res = await getCustomerStatement(fromDate, toDate);
     if ("error" in res) {
-      setError(res.error);
+      setError(res.error ?? "Unknown error");
       setRows([]);
       setPaymentsMissing(false);
       setLoading(false);
@@ -121,7 +121,7 @@ export function CustomerStatement({ orgName }: { orgName?: string }) {
 
     const res = await getCustomerStatementTransactions(row.customer_id, fromDate, toDate);
     if ("error" in res) {
-      setTxError(res.error);
+      setTxError(res.error ?? "Unknown error");
       setTxLoading(false);
       return;
     }

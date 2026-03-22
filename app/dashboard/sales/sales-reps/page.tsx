@@ -18,16 +18,25 @@ export default async function SalesRepsPage() {
     return <div><p className="text-muted-foreground">Loading organization…</p></div>;
   }
 
-  const { data } = await supabase
-    .from("sales_reps")
-    .select("id, name, code, first_name, last_name, sales_rep_type, phone, email, location, is_active")
-    .eq("organization_id", orgId)
-    .order("name");
-  const salesReps = data ?? [];
+  const [repsRes, locationsRes] = await Promise.all([
+    supabase
+      .from("sales_reps")
+      .select("id, name, code, first_name, last_name, sales_rep_type, phone, email, location, is_active")
+      .eq("organization_id", orgId)
+      .order("name"),
+    supabase
+      .from("locations")
+      .select("id, code, name")
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .order("code"),
+  ]);
+  const salesReps = repsRes.data ?? [];
+  const locations = (locationsRes.data ?? []) as Array<{ id: string; code?: string | null; name: string }>;
 
   return (
     <div>
-      <SalesRepList salesReps={salesReps} />
+      <SalesRepList salesReps={salesReps} locations={locations} />
     </div>
   );
 }

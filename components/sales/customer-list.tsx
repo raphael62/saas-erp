@@ -167,9 +167,14 @@ export function CustomerList({
       );
     }
     if (key === "credit_limit") return Number(customer.credit_limit ?? 0).toFixed(2);
-    if (key === "sales_rep_id") return customer.sales_reps?.name ?? "—";
+    if (key === "sales_rep_id") {
+      const sr = customer.sales_reps;
+      return (Array.isArray(sr) ? sr[0]?.name : sr?.name) ?? "—";
+    }
     if (key === "is_active") return customer.is_active === false ? "Inactive" : "Active";
-    return customer[key] ?? "—";
+    const v = customer[key];
+    if (v !== null && typeof v === "object" && "name" in v) return (v as { name: string }).name;
+    return v ?? "—";
   };
 
   return (

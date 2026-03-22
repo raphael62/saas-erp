@@ -140,7 +140,7 @@ export function CustomerPayments({
     if (!confirm("Delete this payment?")) return;
     const res = await deleteCustomerPayment(selected.id);
     if ("error" in res) {
-      setMessage(res.error);
+      setMessage(res.error ?? "Unknown error");
       return;
     }
     setMessage("Payment deleted.");
@@ -591,7 +591,7 @@ function SinglePaymentDialog({
               });
               setPending(false);
               if ("error" in res) {
-                setError(res.error);
+                setError(res.error ?? "Unknown error");
                 return;
               }
               onSaved();
@@ -873,7 +873,7 @@ function BatchPaymentDialog({
               const res = await saveBatchCustomerPayments(payload);
               setPending(false);
               if ("error" in res) {
-                setError(res.error);
+                setError(res.error ?? "Unknown error");
                 return;
               }
               onSaved();

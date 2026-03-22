@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -390,17 +391,32 @@ export function SalesInvoiceList({
                         onClick={() => setSelectedId(row.id)}
                       >
                         <td className="border-r border-border px-2 py-2">
-                          <button
-                            type="button"
-                            className="text-left text-[var(--navbar)] hover:underline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingId(row.id);
-                              setShowForm(true);
-                            }}
-                          >
-                            {row.invoice_no}
-                          </button>
+                          {String(row.type_status ?? "").toLowerCase() === "pos" ? (
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              <Link
+                                href={`/dashboard/pos/receipts/${row.id}`}
+                                className="text-[var(--navbar)] hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {row.invoice_no}
+                              </Link>
+                              <span className="rounded bg-muted px-1.5 py-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                POS
+                              </span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-left text-[var(--navbar)] hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingId(row.id);
+                                setShowForm(true);
+                              }}
+                            >
+                              {row.invoice_no}
+                            </button>
+                          )}
                         </td>
                         <td className="border-r border-border px-2 py-2">{row.customers?.name ?? "—"}</td>
                         <td className="border-r border-border px-2 py-2">{row.invoice_date}</td>

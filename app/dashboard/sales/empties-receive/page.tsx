@@ -90,7 +90,7 @@ export default async function EmptiesReceivePage({
 
   return (
     <EmptiesReceiveList
-      receives={receives as Parameters<typeof EmptiesReceiveList>[0]["receives"]}
+      receives={receives as unknown as Parameters<typeof EmptiesReceiveList>[0]["receives"]}
       lines={lines as Parameters<typeof EmptiesReceiveList>[0]["lines"]}
       customers={customers as Parameters<typeof EmptiesReceiveList>[0]["customers"]}
       locations={locations as Parameters<typeof EmptiesReceiveList>[0]["locations"]}
