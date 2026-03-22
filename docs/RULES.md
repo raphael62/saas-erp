@@ -1,4 +1,4 @@
-# SaaS ERP – Ground Rules
+# MasterBooks ERP – Ground Rules
 
 Documented rules and conventions for this project. Update this file as we add new rules.
 

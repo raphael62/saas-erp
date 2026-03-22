@@ -1,10 +1,10 @@
-# SaaS ERP
+# MasterBooks ERP
 
 Multi-tenant ERP built with **Next.js**, **TypeScript**, **Supabase**, **Stripe**, and **Vercel**.
 
 ## Canonical Repository
 
-- This folder/repo (`saas-erp`) is the single source of truth for the SaaS ERP project.
+- This folder/repo (`masterbooks-erp`) is the single source of truth for the MasterBooks ERP project.
 - Use Supabase SQL files under `supabase/` for schema and migrations.
 - Do not add or maintain parallel project folders for this product.
 
@@ -73,5 +73,5 @@ Use the printed webhook secret in `.env.local` as `STRIPE_WEBHOOK_SECRET`.
 ## Deploy on Vercel
 
 1. Push the repo to GitHub and import the project in Vercel.
-2. Add the same env vars in Vercel (Supabase, Stripe, `NEXT_PUBLIC_APP_URL` = your production URL).
+2. Add the same env vars in Vercel (Supabase, Stripe, `NEXT_PUBLIC_APP_URL` = `https://masterbookserp.com` or your custom domain).
 3. In Stripe Dashboard, add a webhook endpoint: `https://your-app.vercel.app/api/webhooks/stripe` and set `STRIPE_WEBHOOK_SECRET` in Vercel.

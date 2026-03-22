@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
@@ -11,6 +11,12 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const err = searchParams.get("error");
+    if (err === "auth") setError("Authentication failed. Please try again.");
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,6 +34,9 @@ export default function LoginPage() {
       }
       router.push("/dashboard");
       router.refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Sign-in failed. Check your connection and try again.";
+      setError(msg);
     } finally {
       setLoading(false);
     }

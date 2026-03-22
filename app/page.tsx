@@ -3,7 +3,7 @@ import Link from "next/link";
 export default function HomePage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8 bg-background text-foreground">
-      <h1 className="text-3xl font-semibold">SaaS ERP</h1>
+      <h1 className="text-3xl font-semibold">MasterBooks ERP</h1>
       <p className="text-muted-foreground text-center max-w-md">
         Multi-tenant ERP — Dashboard, Sales, Purchases, Inventory, and more.
       </p>

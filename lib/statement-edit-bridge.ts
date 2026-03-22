@@ -3,7 +3,7 @@
  * remount or hydrate in an order where the query is briefly missing and the
  * form never opens. Queue the target here and consume on the destination page.
  */
-const STORAGE_KEY = "saas-erp:supplier-statement-edit-v1";
+const STORAGE_KEY = "masterbooks-erp:supplier-statement-edit-v1";
 const MAX_AGE_MS = 120_000;
 
 type Stored = { href: string; ts: number };

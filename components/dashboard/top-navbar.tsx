@@ -50,9 +50,9 @@ export default function TopNavbar({ userEmail, userName, userRole, navItems }: T
           </button>
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
             <div className="flex h-8 w-8 items-center justify-center rounded bg-white/10 text-lg font-bold">
-              S
+              M
             </div>
-            <span className="hidden sm:inline-block">SaaS ERP</span>
+            <span className="hidden sm:inline-block">MasterBooks ERP</span>
           </Link>
           <div className="hidden flex-1 items-center justify-center gap-3 md:flex">
             <button
