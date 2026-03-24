@@ -203,6 +203,7 @@ export async function requireOrgId(): Promise<{ userId: string; orgId: string } 
   if (!user) {
     const { redirect } = await import("next/navigation");
     redirect("/login");
+    throw new Error("Unreachable");
   }
 
   let { orgId } = await getProfileWithOrg(user.id, user.email ?? undefined);

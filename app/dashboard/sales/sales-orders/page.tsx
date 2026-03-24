@@ -122,7 +122,7 @@ export default async function SalesOrdersPage({
         <span className="text-foreground">Sales Orders</span>
       </div>
       <SalesOrderList
-        orders={orders as Parameters<typeof SalesOrderList>[0]["orders"]}
+        orders={orders as unknown as Parameters<typeof SalesOrderList>[0]["orders"]}
         lines={lines as Parameters<typeof SalesOrderList>[0]["lines"]}
         products={products as Parameters<typeof SalesOrderList>[0]["products"]}
         customers={customers as Parameters<typeof SalesOrderList>[0]["customers"]}

@@ -6,8 +6,15 @@ import { getOrgContextForAction } from "@/lib/org-context";
 
 async function getPosOrgContext() {
   const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
+  if (!ctx.ok) {
+    return {
+      supabase: ctx.supabase,
+      orgId: null as string | null,
+      userId: ctx.userId ?? null,
+      error: ctx.error,
+    };
+  }
+  return { supabase: ctx.supabase, orgId: ctx.orgId, userId: ctx.userId, error: null as string | null };
 }
 
 function n(v: string | number | null | undefined): number {
@@ -86,8 +93,8 @@ async function generatePosInvoiceNo(
 }
 
 export async function savePosSale(input: PosSaleInput) {
-  const { supabase, orgId, error } = await getPosOrgContext();
-  if (error || !orgId) return { error: error ?? "No organization" };
+  const { supabase, orgId, userId, error } = await getPosOrgContext();
+  if (error || !orgId || !userId) return { error: error ?? "No organization" };
 
   const customerId = input.customerId?.trim() || null;
   const locationId = input.locationId?.trim() || null;
@@ -124,9 +131,9 @@ export async function savePosSale(input: PosSaleInput) {
       empties_value: emptiesDeposit,
       payment_method: input.paymentMethod || "cash",
       payment_account_id: input.paymentAccountId || null,
-      cashier_id: input.cashierId || user.id,
+      cashier_id: input.cashierId?.trim() || userId,
       posted_at: new Date().toISOString(),
-      posted_by: user.id,
+      posted_by: userId,
     })
     .select("id")
     .single();

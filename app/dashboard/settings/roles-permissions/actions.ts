@@ -10,7 +10,7 @@ async function getContext() {
   if (!ctx.ok) {
     const isUnauth = ctx.error === "Unauthorized";
     return {
-      error: (isUnauth ? "Unauthorized" : "No organization") as const,
+      error: isUnauth ? ("Unauthorized" as const) : ("No organization" as const),
       supabase: isUnauth ? null : ctx.supabase,
       userId: ctx.userId ?? null,
       orgId: null,
