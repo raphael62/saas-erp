@@ -1,4 +1,6 @@
-@import "tailwindcss";
+/* Set base path so Tailwind scans from project root – avoids parent .gitignore breaking v4 */
+@import "tailwindcss" source("..");
+
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 

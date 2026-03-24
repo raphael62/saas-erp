@@ -1,5 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getProfileWithOrg, requireOrgId } from "@/lib/org-context";
+import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 import { NewPOSSale } from "@/components/pos/new-pos-sale";
 import { SsrTargets } from "@/components/pos/ssr-targets";
 import { ParkedSalesList } from "@/components/pos/parked-sales-list";
@@ -53,19 +55,16 @@ export default async function POSSectionPage({
 
   if (section === "new-sale") {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) redirect("/login");
 
-    const { data: profile } = await supabase.from("profiles").select("organization_id, full_name").eq("id", user.id).single();
-    const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-    const cashierName = (profile as { full_name?: string } | null)?.full_name ?? user.email ?? "Cashier";
+    const { orgId, fullName } = await getProfileWithOrg(user.id, user.email ?? undefined);
+    const cashierName = fullName ?? user.email ?? "Cashier";
     if (!orgId) {
       return (
         <div className="space-y-4">
           <h1 className="text-xl font-semibold">New POS Sale</h1>
-          <p className="text-muted-foreground">Loading organization…</p>
+          <NoOrgPrompt />
         </div>
       );
     }
@@ -148,17 +147,17 @@ export default async function POSSectionPage({
   }
 
   if (section === "daily-payments") {
+    const { orgId } = await requireOrgId();
+    if (!orgId) {
+      return (
+        <div className="space-y-4">
+          <h1 className="text-xl font-semibold">Daily Payments</h1>
+          <NoOrgPrompt />
+        </div>
+      );
+    }
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) redirect("/login");
-
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
-    const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-    const locations = orgId
-      ? ((await supabase.from("locations").select("id, code, name").eq("organization_id", orgId).eq("is_active", true).order("code")).data ?? [])
-      : [];
+    const locations = (await supabase.from("locations").select("id, code, name").eq("organization_id", orgId).eq("is_active", true).order("code")).data ?? [];
 
     return (
       <div className="space-y-4">
@@ -174,23 +173,17 @@ export default async function POSSectionPage({
   }
 
   if (section === "parked") {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) redirect("/login");
-
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
-    const orgId = (profile as { organization_id?: string } | null)?.organization_id;
+    const { orgId } = await requireOrgId();
     if (!orgId) {
       return (
         <div className="space-y-4">
           <h1 className="text-xl font-semibold">Parked Sales</h1>
-          <p className="text-muted-foreground">Loading organization…</p>
+          <NoOrgPrompt />
         </div>
       );
     }
 
+    const supabase = await createClient();
     const [customersRes, locationsRes] = await Promise.all([
       supabase.from("customers").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("name"),
       supabase.from("locations").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("code"),
@@ -212,22 +205,17 @@ export default async function POSSectionPage({
   }
 
   if (section === "targets") {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) redirect("/login");
-
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
-    const orgId = (profile as { organization_id?: string } | null)?.organization_id;
+    const { orgId } = await requireOrgId();
     if (!orgId) {
       return (
-        <div>
-          <p className="text-muted-foreground">Loading organization...</p>
+        <div className="space-y-4">
+          <h1 className="text-xl font-semibold">POS Targets</h1>
+          <NoOrgPrompt />
         </div>
       );
     }
 
+    const supabase = await createClient();
     const ssrRes = await supabase
       .from("sales_ssr_monthly_targets")
       .select("id, sales_rep_id, month_start, target_value, commission_pct, notes, sales_reps(id, code, name)")
@@ -268,21 +256,17 @@ export default async function POSSectionPage({
   }
 
   if (section === "performance") {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) redirect("/login");
-
-    const { data: profile } = await supabase.from("profiles").select("organization_id").eq("id", user.id).single();
-    const orgId = (profile as { organization_id?: string } | null)?.organization_id;
+    const { orgId } = await requireOrgId();
     if (!orgId) {
       return (
         <div className="space-y-4">
           <h1 className="text-xl font-semibold">Shop Performance Report</h1>
-          <p className="text-muted-foreground">Loading organization…</p>
+          <NoOrgPrompt />
         </div>
       );
     }
 
+    const supabase = await createClient();
     const repsRes = await supabase
       .from("sales_reps")
       .select("id, code, name")

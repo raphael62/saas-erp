@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { isTableUnavailableError, isSchemaCacheError } from "@/lib/supabase/table-missing";
+
+const SCHEMA_CACHE_MSG =
+  "PostgREST schema cache is out of sync. Click 'Reload schema' then try again.";
 
 type SavePaymentInput = {
   id?: string;
@@ -35,21 +39,10 @@ function clamp2(value: number) {
 }
 
 async function getOrgContext() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { supabase, orgId: null as string | null, error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id ?? null;
-  if (!orgId) return { supabase, orgId: null as string | null, error: "No organization" };
-  return { supabase, orgId, error: null as string | null };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
+  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
 }
 
 async function generatePaymentNo(supabase: Awaited<ReturnType<typeof createClient>>, orgId: string, dateIso: string) {
@@ -104,8 +97,8 @@ export async function getCustomerOutstanding(customerIdInput: string, asOfDateIn
     .eq("organization_id", orgId)
     .eq("customer_id", customerId)
     .lte("payment_date", asOfDate);
-  if (paymentsRes.error && !paymentsRes.error.message.toLowerCase().includes("does not exist")) {
-    return { error: paymentsRes.error.message };
+  if (paymentsRes.error && !isTableUnavailableError(paymentsRes.error)) {
+    return { error: isSchemaCacheError(paymentsRes.error) ? SCHEMA_CACHE_MSG : paymentsRes.error.message };
   }
 
   const totalSales = (salesRes.data ?? []).reduce(

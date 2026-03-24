@@ -278,10 +278,13 @@ export function LoadOutSheetList({
     const prod = productById.get(pid);
     const packUnit = prod?.pack_unit != null ? Number(prod.pack_unit) : 0;
     const category = prod?.category ?? null;
-    if (isSpirits(category, packUnit)) {
-      return (price / packUnit) * vanSales;
+    let v: number;
+    if (isSpirits(category, packUnit) && packUnit > 0) {
+      v = (price / packUnit) * vanSales;
+    } else {
+      v = price * vanSales;
     }
-    return price * vanSales;
+    return Number.isFinite(v) ? v : 0;
   }
 
   function getEffectivePrice(productId: string, priceTypeName: string, onDate: string): number {
@@ -375,7 +378,7 @@ export function LoadOutSheetList({
   }, [editId, sheets, hydrateFromSheet]);
 
   const kpis = useMemo(() => {
-    const wd = monthWorkingDays;
+    const wd = Number.isFinite(monthWorkingDays) ? monthWorkingDays : 0;
     const targetFromSheet =
       editingSheet != null && editingSheet.daily_target != null ? n(editingSheet.daily_target) : 0;
 
@@ -400,9 +403,12 @@ export function LoadOutSheetList({
     const loadOutColumnSum = lineState.reduce((s, l) => s + n(l.load_out), 0);
     const sales = lineState.reduce((s, l) => s + n(l.van_sales), 0);
     const value = lineState.reduce((s, l) => s + lineSalesValue(l, l.product_id), 0);
-    const pct = target > 0 ? Math.round((load / target) * 1000) / 10 : null;
+    const pct = target > 0 && Number.isFinite(load) ? Math.round((load / target) * 1000) / 10 : null;
     return { target, load, loadOutColumnSum, sales, value, pct, workingDays: wd };
   }, [lineState, vsrTargetQtyByProduct, monthWorkingDays, editingSheet, productById]);
+
+  const safeNum = (v: number, opts?: { minFrac?: number; maxFrac?: number }) =>
+    Number.isFinite(v) ? v.toLocaleString(undefined, { minimumFractionDigits: opts?.minFrac ?? 0, maximumFractionDigits: opts?.maxFrac ?? 4 }) : "—";
 
   function buildFormData() {
     const fd = new FormData();
@@ -636,21 +642,19 @@ export function LoadOutSheetList({
               [
                 [
                   "Daily target (ctn)",
-                  kpis.workingDays > 0
-                    ? kpis.target.toLocaleString(undefined, { maximumFractionDigits: 4 })
-                    : "—",
+                  kpis.workingDays > 0 ? safeNum(kpis.target, { maxFrac: 4 }) : "—",
                   "bg-orange-50 text-orange-900 dark:bg-orange-950/40 dark:text-orange-100",
                 ],
                 [
                   "LoadOut vs target",
-                  kpis.pct != null ? `${kpis.pct}%` : "—",
+                  kpis.pct != null && Number.isFinite(kpis.pct) ? `${kpis.pct}%` : "—",
                   "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
                 ],
-                ["Total load out", kpis.load, "bg-orange-50 text-orange-900 dark:bg-orange-950/40 dark:text-orange-100"],
-                ["Total van sales", kpis.sales, "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"],
+                ["Total load out", safeNum(kpis.load), "bg-orange-50 text-orange-900 dark:bg-orange-950/40 dark:text-orange-100"],
+                ["Total van sales", safeNum(kpis.sales), "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"],
                 [
                   "Sales value",
-                  kpis.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                  safeNum(kpis.value, { minFrac: 2, maxFrac: 2 }),
                   "bg-violet-50 text-violet-900 dark:bg-violet-950/40 dark:text-violet-100",
                 ],
               ] as const
@@ -793,7 +797,7 @@ export function LoadOutSheetList({
                     <td colSpan={2} className="border border-border px-2 py-2 text-right">
                       TOTALS
                     </td>
-                    <td className="border border-border px-2 py-2 text-right text-sm tabular-nums">{kpis.loadOutColumnSum.toLocaleString()}</td>
+                    <td className="border border-border px-2 py-2 text-right text-sm tabular-nums">{safeNum(kpis.loadOutColumnSum)}</td>
                     <td className="border border-border px-2 py-2 text-right text-sm tabular-nums text-sky-800 dark:text-sky-200">
                       {lineState.reduce((s, l) => s + n(l.top_up), 0).toLocaleString()}
                     </td>
@@ -810,11 +814,11 @@ export function LoadOutSheetList({
                       {lineState.reduce((s, l) => s + n(l.van_stocks), 0).toLocaleString()}
                     </td>
                     <td className="border border-border px-2 py-2 text-right text-sm tabular-nums text-emerald-800 dark:text-emerald-200">
-                      {kpis.sales.toLocaleString()}
+                      {safeNum(kpis.sales)}
                     </td>
                     <td className="border border-border px-2 py-2" />
                     <td className="border border-border px-2 py-2 text-right text-sm tabular-nums text-violet-800 dark:text-violet-300">
-                      {kpis.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {safeNum(kpis.value, { minFrac: 2, maxFrac: 2 })}
                     </td>
                   </tr>
                 </tfoot>

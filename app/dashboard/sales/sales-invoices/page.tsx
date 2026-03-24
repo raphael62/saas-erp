@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SalesInvoiceList } from "@/components/sales/sales-invoice-list";
+import { getProfileWithOrg } from "@/lib/org-context";
+import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 
 export default async function SalesInvoicesPage({
   searchParams,
@@ -15,20 +17,8 @@ export default async function SalesInvoicesPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) {
-    return (
-      <div>
-        <p className="text-muted-foreground">Loading organization...</p>
-      </div>
-    );
-  }
+  const { orgId } = await getProfileWithOrg(user.id, user.email ?? undefined);
+  if (!orgId) return <NoOrgPrompt />;
 
   const invoicesRes = await supabase
     .from("sales_invoices")
@@ -121,6 +111,31 @@ export default async function SalesInvoicesPage({
     .eq("organization_id", orgId)
     .order("row_no");
 
+  const salesOrdersRes = await supabase
+    .from("sales_orders")
+    .select("id, order_no, customer_id, sales_rep_id, location_id, order_date, delivery_date, notes")
+    .eq("organization_id", orgId)
+    .order("order_date", { ascending: false });
+
+  const salesOrderLinesRes = await supabase
+    .from("sales_order_lines")
+    .select("id, sales_order_id, product_id, item_name_snapshot, price_type, pack_unit, qty, cl_qty, price_ex, price_tax_inc, tax_rate, tax_amount, value_tax_inc, row_no")
+    .eq("organization_id", orgId)
+    .order("row_no");
+
+  const loadOutSheetsRes = await supabase
+    .from("load_out_sheets")
+    .select("id, sheet_no, sales_rep_id, location_id, sales_date, vehicle_no, driver_name, customer_id")
+    .eq("organization_id", orgId)
+    .eq("status", "submitted")
+    .order("sales_date", { ascending: false });
+
+  const loadOutSheetLinesRes = await supabase
+    .from("load_out_sheet_lines")
+    .select("id, load_out_sheet_id, product_id, product_code_snapshot, product_name_snapshot, van_sales_qty, unit_price, sales_value, row_no")
+    .eq("organization_id", orgId)
+    .order("row_no");
+
   const invoices = invoicesRes.error ? [] : invoicesRes.data ?? [];
   const lines = linesRes.error ? [] : linesRes.data ?? [];
   const products = productsRes.error ? [] : productsRes.data ?? [];
@@ -132,6 +147,10 @@ export default async function SalesInvoicesPage({
   const priceListItems = priceListItemsRes.error ? [] : priceListItemsRes.data ?? [];
   const promotions = promotionsRes.error ? [] : promotionsRes.data ?? [];
   const promotionRules = promotionRulesRes.error ? [] : promotionRulesRes.data ?? [];
+  const salesOrders = salesOrdersRes.error ? [] : salesOrdersRes.data ?? [];
+  const salesOrderLines = salesOrderLinesRes.error ? [] : salesOrderLinesRes.data ?? [];
+  const loadOutSheets = loadOutSheetsRes.error ? [] : loadOutSheetsRes.data ?? [];
+  const loadOutSheetLines = loadOutSheetLinesRes.error ? [] : loadOutSheetLinesRes.data ?? [];
 
   return (
     <SalesInvoiceList
@@ -146,6 +165,10 @@ export default async function SalesInvoicesPage({
       priceListItems={priceListItems as Parameters<typeof SalesInvoiceList>[0]["priceListItems"]}
       promotions={promotions as Parameters<typeof SalesInvoiceList>[0]["promotions"]}
       promotionRules={promotionRules as Parameters<typeof SalesInvoiceList>[0]["promotionRules"]}
+      salesOrders={salesOrders as Parameters<typeof SalesInvoiceList>[0]["salesOrders"]}
+      salesOrderLines={salesOrderLines as Parameters<typeof SalesInvoiceList>[0]["salesOrderLines"]}
+      loadOutSheets={loadOutSheets as Parameters<typeof SalesInvoiceList>[0]["loadOutSheets"]}
+      loadOutSheetLines={loadOutSheetLines as Parameters<typeof SalesInvoiceList>[0]["loadOutSheetLines"]}
       editId={editId}
     />
   );

@@ -8,6 +8,7 @@ import {
   getCustomerEmptiesStatement,
   getCustomerEmptiesTypeTransactions,
 } from "@/app/dashboard/sales/customer-empties-statement/actions";
+import { SchemaCacheReloadButton } from "@/components/ui/schema-cache-reload";
 
 type DetailRow = {
   empties_type: string;
@@ -196,7 +197,12 @@ export function CustomerEmptiesStatement({ orgName }: { orgName?: string }) {
         </Button>
       </div>
 
-      {error && <p className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+      {error && (
+        <div className="flex flex-wrap items-center gap-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <span className="flex-1">{error}</span>
+          <SchemaCacheReloadButton error={error} />
+        </div>
+      )}
 
       <div className="max-h-[calc(100vh-14rem)] overflow-auto rounded border border-border">
         <table className="w-full text-sm">
@@ -370,7 +376,12 @@ export function CustomerEmptiesStatement({ orgName }: { orgName?: string }) {
             Click the reference number to open the invoice or empties receipt for editing in a new tab. Balance = Opening + Expected &minus; Sold Out &minus; Received.
           </p>
 
-          {txError && <p className="rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-sm text-destructive">{txError}</p>}
+          {txError && (
+            <div className="flex flex-wrap items-center gap-2 rounded border border-destructive/40 bg-destructive/10 px-2 py-1 text-sm text-destructive">
+              <span className="flex-1">{txError}</span>
+              <SchemaCacheReloadButton error={txError} />
+            </div>
+          )}
 
           <div className="rounded border border-border">
             <table className="w-full text-sm">

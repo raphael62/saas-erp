@@ -95,6 +95,7 @@ export function CustomerPayments({
   paymentMethods = [],
   paymentAccounts = [],
   paymentsMissing = false,
+  schemaCacheStale = false,
   editId,
 }: {
   payments: Payment[];
@@ -102,11 +103,13 @@ export function CustomerPayments({
   paymentMethods: PaymentMethod[];
   paymentAccounts: string[];
   paymentsMissing?: boolean;
+  schemaCacheStale?: boolean;
   editId?: string;
 }) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [reloadPending, setReloadPending] = useState(false);
 
   const openEditId = editId && payments.some((p) => p.id === editId) ? editId : null;
   const [showSingle, setShowSingle] = useState(Boolean(openEditId));
@@ -176,9 +179,40 @@ export function CustomerPayments({
           </div>
 
           {paymentsMissing && (
-            <p className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              Customer payments table is missing. Run <code>supabase/ADD_CUSTOMER_PAYMENTS.sql</code> first.
-            </p>
+            <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {schemaCacheStale ? (
+                <>
+                  PostgREST schema cache is out of sync.{" "}
+                  <button
+                    type="button"
+                    disabled={reloadPending}
+                    className="font-medium underline hover:no-underline"
+                    onClick={async () => {
+                      setReloadPending(true);
+                      try {
+                        const res = await fetch("/api/admin/reload-schema", { method: "POST" });
+                        const data = await res.json();
+                        if (res.ok && data.ok) {
+                          setMessage("Schema reload triggered. Refreshing…");
+                          window.location.reload();
+                        } else {
+                          setMessage(data.error ?? "Reload failed");
+                        }
+                      } catch {
+                        setMessage("Reload failed");
+                      } finally {
+                        setReloadPending(false);
+                      }
+                    }}
+                  >
+                    {reloadPending ? "Reloading…" : "Reload schema"}
+                  </button>
+                  , then refresh.
+                </>
+              ) : (
+                <>Customer payments table is missing. Run migrations first.</>
+              )}
+            </div>
           )}
           {message && <p className="rounded border border-border bg-muted/30 px-3 py-1.5 text-sm">{message}</p>}
 

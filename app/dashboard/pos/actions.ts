@@ -2,6 +2,13 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { getOrgContextForAction } from "@/lib/org-context";
+
+async function getPosOrgContext() {
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
+  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
+}
 
 function n(v: string | number | null | undefined): number {
   const raw = String(v ?? "").replace(/,/g, "").trim();
@@ -79,20 +86,8 @@ async function generatePosInvoiceNo(
 }
 
 export async function savePosSale(input: PosSaleInput) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const { supabase, orgId, error } = await getPosOrgContext();
+  if (error || !orgId) return { error: error ?? "No organization" };
 
   const customerId = input.customerId?.trim() || null;
   const locationId = input.locationId?.trim() || null;
@@ -489,20 +484,8 @@ export async function searchPosReceipts(
   toDate: string,
   query?: string
 ): Promise<{ receipts?: ReceiptRow[]; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const { supabase, orgId, error: ctxError } = await getPosOrgContext();
+  if (ctxError || !orgId) return { error: ctxError ?? "No organization" };
 
   const { data, error } = await supabase
     .from("sales_invoices")
@@ -559,20 +542,8 @@ export async function searchPosReceipts(
 }
 
 export async function refundPosReceipt(invoiceId: string): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const { supabase, orgId, error } = await getPosOrgContext();
+  if (error || !orgId) return { error: error ?? "No organization" };
 
   const { data: inv } = await supabase
     .from("sales_invoices")
@@ -620,20 +591,8 @@ export async function refundPosReceipt(invoiceId: string): Promise<{ error?: str
 export async function refundPosReceiptLine(
   lineId: string
 ): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const { supabase, orgId, error } = await getPosOrgContext();
+  if (error || !orgId) return { error: error ?? "No organization" };
 
   const { data: line } = await supabase
     .from("sales_invoice_lines")
@@ -713,20 +672,8 @@ export type DailyPaymentRow = {
 export async function getDailyPosPayments(
   date: string
 ): Promise<{ payments?: DailyPaymentRow[]; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const { supabase, orgId, error: ctxError } = await getPosOrgContext();
+  if (ctxError || !orgId) return { error: ctxError ?? "No organization" };
 
   const { data, error } = await supabase
     .from("sales_invoices")
@@ -782,20 +729,8 @@ export async function getDailyPosPaymentsByAccount(
   totalReceipts?: number;
   error?: string;
 }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const { supabase, orgId, error: ctxError } = await getPosOrgContext();
+  if (ctxError || !orgId) return { error: ctxError ?? "No organization" };
 
   const [accountsRes, invoicesRes] = await Promise.all([
     supabase

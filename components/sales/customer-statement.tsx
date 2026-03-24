@@ -8,6 +8,7 @@ import {
   getCustomerStatement,
   getCustomerStatementTransactions,
 } from "@/app/dashboard/sales/customer-statement/actions";
+import { SchemaCacheReloadButton } from "@/components/ui/schema-cache-reload";
 
 type StatementRow = {
   customer_id: string;
@@ -182,7 +183,12 @@ export function CustomerStatement({ orgName }: { orgName?: string }) {
           Customer payments table is missing. Run <code>supabase/ADD_CUSTOMER_PAYMENTS.sql</code> to include payment rows.
         </p>
       )}
-      {error && <p className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+      {error && (
+        <div className="flex flex-wrap items-center gap-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <span className="flex-1">{error}</span>
+          <SchemaCacheReloadButton error={error} />
+        </div>
+      )}
 
       <div className="max-h-[calc(100vh-16rem)] overflow-auto rounded border border-border">
         <table className="w-full text-sm">
@@ -284,7 +290,12 @@ export function CustomerStatement({ orgName }: { orgName?: string }) {
               Payment entries are unavailable until <code>customer_payments</code> table is created.
             </p>
           )}
-          {txError && <p className="rounded border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-sm text-destructive">{txError}</p>}
+          {txError && (
+            <div className="flex flex-wrap items-center gap-2 rounded border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-sm text-destructive">
+              <span className="flex-1">{txError}</span>
+              <SchemaCacheReloadButton error={txError} />
+            </div>
+          )}
 
           <div className="overflow-auto rounded border border-border">
             <table className="w-full text-sm">

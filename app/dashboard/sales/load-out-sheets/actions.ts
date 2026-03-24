@@ -5,22 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { countMonthDaysExcludingSundays } from "@/lib/month-working-days";
 
 async function getOrgContext() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { supabase, orgId: null as string | null, error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id ?? null;
-  if (!orgId) return { supabase, orgId: null as string | null, error: "No organization" };
-
-  return { supabase, orgId, error: null as string | null };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
+  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
 }
 
 function parseNum(v: FormDataEntryValue | null) {
@@ -659,10 +647,11 @@ export async function saveLoadOutSheet(formData: FormData) {
   let sheetId = id;
   let sheetNo = String(formData.get("sheet_no") ?? "").trim() || null;
 
+  let existingDailyTarget: number | null = null;
   if (sheetId) {
     const { data: existing } = await supabase
       .from("load_out_sheets")
-      .select("id, sheet_no, status")
+      .select("id, sheet_no, status, daily_target")
       .eq("id", sheetId)
       .eq("organization_id", orgId)
       .single();
@@ -671,6 +660,8 @@ export async function saveLoadOutSheet(formData: FormData) {
       return { error: "Only draft sheets can be edited." };
     }
     sheetNo = sheetNo || String((existing as { sheet_no?: string }).sheet_no);
+    const dt = (existing as { daily_target?: number | null }).daily_target;
+    existingDailyTarget = dt != null ? Number(dt) : null;
   } else {
     sheetNo = sheetNo || (await nextSheetNo(supabase, orgId));
   }
@@ -683,9 +674,9 @@ export async function saveLoadOutSheet(formData: FormData) {
     sales_date: salesDate,
     vehicle_no: vehicleNo,
     driver_name: driverName,
-    daily_target: 0,
+    daily_target: sheetId && existingDailyTarget != null && Number.isFinite(existingDailyTarget) ? existingDailyTarget : 0,
     notes,
-    status: "draft",
+    status: "draft" as const,
   };
 
   if (sheetId) {

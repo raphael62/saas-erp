@@ -1,9 +1,13 @@
 import Link from "next/link";
+import { Layers } from "lucide-react";
 
 export default function HomePage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8 bg-background text-foreground">
-      <h1 className="text-3xl font-semibold">MasterBooks ERP</h1>
+      <div className="flex items-center gap-3">
+        <Layers className="h-12 w-12 text-foreground" strokeWidth={2} />
+        <h1 className="text-3xl font-semibold">MasterBooks ERP</h1>
+      </div>
       <p className="text-muted-foreground text-center max-w-md">
         Multi-tenant ERP — Dashboard, Sales, Purchases, Inventory, and more.
       </p>

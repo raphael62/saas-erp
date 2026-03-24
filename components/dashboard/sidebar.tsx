@@ -2,13 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronLeft, LayoutDashboard } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { MainNavItem } from "./nav-config";
+import { getNavIcon } from "./nav-icons";
+import type { MainNavItemSerialized } from "@/lib/nav-items";
 
 interface SidebarProps {
-  navItems: MainNavItem[];
+  navItems: MainNavItemSerialized[];
 }
+
+const DEFAULT_MODULE: MainNavItemSerialized = {
+  href: "/dashboard",
+  label: "Dashboard",
+  iconKey: "LayoutDashboard",
+  subItems: [{ href: "/dashboard", label: "Overview", iconKey: "LayoutDashboard" }],
+};
 
 export default function Sidebar({ navItems }: SidebarProps) {
   const pathname = usePathname();
@@ -18,7 +26,7 @@ export default function Sidebar({ navItems }: SidebarProps) {
       (m) =>
         m.href === pathname ||
         (m.href !== "/dashboard" && pathname.startsWith(m.href))
-    ) ?? navItems[0] ?? { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, subItems: [{ href: "/dashboard", label: "Overview", icon: LayoutDashboard }] };
+    ) ?? navItems[0] ?? DEFAULT_MODULE;
 
   return (
     <aside className="hidden w-56 flex-col border-r border-border bg-muted/40 lg:flex">
@@ -51,7 +59,10 @@ export default function Sidebar({ navItems }: SidebarProps) {
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
-              <item.icon className="h-5 w-5 shrink-0" />
+              {(() => {
+                const Icon = getNavIcon(item.iconKey);
+                return <Icon className="h-5 w-5 shrink-0" />;
+              })()}
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
               {item.badge && (
                 <span className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/50 dark:text-amber-400">

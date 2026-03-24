@@ -15,21 +15,10 @@ type DispatchLineInput = {
 };
 
 async function getOrgContext() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { supabase, orgId: null as string | null, error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id ?? null;
-  if (!orgId) return { supabase, orgId: null as string | null, error: "No organization" };
-  return { supabase, orgId, error: null as string | null };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
+  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
 }
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0) {

@@ -91,6 +91,7 @@ Master data fields (BrandCategory, Unit of Measure, Empties Type, Vendor, etc.) 
 
 Navigation items are filtered by user role. Users only see menus they are authorized to access.
 
+- **super_admin** – Highest privilege; sees all modules and can manage all orgs/users
 - **admin** – Sees all modules
 - **sales** – Dashboard, Sales, POS, Inventory, Reports, Preferences
 - **purchasing** – Dashboard, Purchases, Inventory, Reports, Preferences

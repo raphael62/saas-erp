@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PromotionList } from "@/components/sales/promotion-list";
+import { getProfileWithOrg } from "@/lib/org-context";
+import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 
 export default async function PromotionsPage() {
   const supabase = await createClient();
@@ -9,20 +11,8 @@ export default async function PromotionsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) {
-    return (
-      <div>
-        <p className="text-muted-foreground">Loading organization…</p>
-      </div>
-    );
-  }
+  const { orgId } = await getProfileWithOrg(user.id, user.email ?? undefined);
+  if (!orgId) return <NoOrgPrompt />;
 
   const promotionsRes = await supabase
     .from("promotions")

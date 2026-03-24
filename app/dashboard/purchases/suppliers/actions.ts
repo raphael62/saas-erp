@@ -27,20 +27,10 @@ function parsePaymentTerms(value: FormDataEntryValue | null) {
 }
 
 export async function saveSupplier(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { error: ctx.error };
+  const { orgId, supabase } = ctx;
 
   const id = String(formData.get("id") ?? "").trim() || null;
   const code = parseOptional(formData.get("code"));

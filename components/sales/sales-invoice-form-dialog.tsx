@@ -77,6 +77,57 @@ type PromotionRule = {
   row_no?: number | null;
 };
 
+type SalesOrder = {
+  id: string;
+  order_no: string;
+  customer_id?: string | null;
+  sales_rep_id?: string | null;
+  location_id?: string | null;
+  order_date: string;
+  delivery_date?: string | null;
+  notes?: string | null;
+};
+
+type SalesOrderLine = {
+  id: string;
+  sales_order_id: string;
+  product_id?: string | null;
+  item_name_snapshot?: string | null;
+  price_type?: string | null;
+  pack_unit?: number | null;
+  qty?: number | null;
+  cl_qty?: number | null;
+  price_ex?: number | null;
+  price_tax_inc?: number | null;
+  tax_rate?: number | null;
+  tax_amount?: number | null;
+  value_tax_inc?: number | null;
+  row_no?: number | null;
+};
+
+type LoadOutSheet = {
+  id: string;
+  sheet_no: string;
+  sales_rep_id?: string | null;
+  location_id?: string | null;
+  sales_date: string;
+  vehicle_no?: string | null;
+  driver_name?: string | null;
+  customer_id?: string | null;
+};
+
+type LoadOutSheetLine = {
+  id: string;
+  load_out_sheet_id: string;
+  product_id?: string | null;
+  product_code_snapshot?: string | null;
+  product_name_snapshot?: string | null;
+  van_sales_qty?: number | null;
+  unit_price?: number | null;
+  sales_value?: number | null;
+  row_no?: number | null;
+};
+
 type Invoice = {
   id: string;
   invoice_no: string;
@@ -452,6 +503,10 @@ export function SalesInvoiceFormDialog({
   promotions = [],
   promotionRules = [],
   invoices = [],
+  salesOrders = [],
+  salesOrderLines = [],
+  loadOutSheets = [],
+  loadOutSheetLines = [],
   initialInvoice = null,
   initialLines = [],
 }: {
@@ -468,6 +523,10 @@ export function SalesInvoiceFormDialog({
   promotions?: Promotion[];
   promotionRules?: PromotionRule[];
   invoices?: Invoice[];
+  salesOrders?: SalesOrder[];
+  salesOrderLines?: SalesOrderLine[];
+  loadOutSheets?: LoadOutSheet[];
+  loadOutSheetLines?: LoadOutSheetLine[];
   initialInvoice?: Invoice | null;
   initialLines?: InvoiceLine[];
 }) {
@@ -487,6 +546,8 @@ export function SalesInvoiceFormDialog({
   const [driverName, setDriverName] = useState("");
   const [vehicleNo, setVehicleNo] = useState("");
   const [lineMode, setLineMode] = useState<LineMode>("invoice");
+  const [selectedSalesOrderId, setSelectedSalesOrderId] = useState<string>("");
+  const [selectedLoadOutSheetId, setSelectedLoadOutSheetId] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [customerBalanceOs, setCustomerBalanceOs] = useState("0.00");
   const [defaultPriceType, setDefaultPriceType] = useState("");
@@ -601,6 +662,18 @@ export function SalesInvoiceFormDialog({
     for (const c of customers) map.set(String(c.id), c);
     return map;
   }, [customers]);
+
+  const filteredSalesOrders = useMemo(() => {
+    if (!customerId) return salesOrders;
+    return salesOrders.filter((o) => String(o.customer_id ?? "") === String(customerId));
+  }, [salesOrders, customerId]);
+
+  const filteredLoadOutSheets = useMemo(() => {
+    if (!salesRepId) return loadOutSheets;
+    return loadOutSheets.filter((s) => String(s.sales_rep_id ?? "") === String(salesRepId));
+  }, [loadOutSheets, salesRepId]);
+
+  const linesReadOnly = lineMode === "van_sales" && Boolean(selectedLoadOutSheetId);
 
   const rulesByPromotionId = useMemo(() => {
     const map = new Map<string, PromotionRule[]>();
@@ -758,6 +831,9 @@ export function SalesInvoiceFormDialog({
   useEffect(() => {
     if (!open) return;
     setError(null);
+    setLineMode("invoice");
+    setSelectedSalesOrderId("");
+    setSelectedLoadOutSheetId("");
     setInvoiceNo(initialInvoice?.invoice_no ?? "");
     setInvoiceNoTouched(Boolean(initialInvoice?.id || initialInvoice?.invoice_no));
     setCustomerId(initialInvoice?.customer_id ?? "");
@@ -851,6 +927,7 @@ export function SalesInvoiceFormDialog({
 
   useEffect(() => {
     if (!open || isPosted) return;
+    if (lineMode === "van_sales") return;
     setLines((prev) => {
       const nonPromo = prev.filter((line) => !isPromoLine(line));
       const workingRows = nonPromo.filter((line) => !isLineCompletelyEmpty(line));
@@ -881,6 +958,7 @@ export function SalesInvoiceFormDialog({
   }, [
     open,
     isPosted,
+    lineMode,
     lines,
     customerId,
     locationId,
@@ -1020,6 +1098,7 @@ export function SalesInvoiceFormDialog({
   }, [lines, productById]);
 
   function updateLine(index: number, patch: Partial<EditLine>) {
+    if (linesReadOnly) return;
     setLines((prev) => {
       const next = [...prev];
       const current = next[index];
@@ -1036,6 +1115,7 @@ export function SalesInvoiceFormDialog({
   }
 
   function deleteLine(index: number) {
+    if (linesReadOnly) return;
     setLines((prev) => {
       if (prev.length <= 1) return [blankLine("0", defaultPriceType)];
       const next = prev.filter((_, i) => i !== index);
@@ -1388,7 +1468,13 @@ export function SalesInvoiceFormDialog({
             <button
               key={tab.id}
               type="button"
-              onClick={() => setLineMode(tab.id)}
+              onClick={() => {
+                if (lineMode === tab.id) return;
+                setLineMode(tab.id);
+                setSelectedSalesOrderId("");
+                setSelectedLoadOutSheetId("");
+                setLines([blankLine("0", defaultPriceType), blankLine("1", defaultPriceType), blankLine("2", defaultPriceType)]);
+              }}
               className={`rounded-t border border-b-0 px-3 py-1 ${
                 lineMode === tab.id
                   ? "border-[var(--navbar)] bg-[var(--navbar)] text-white"
@@ -1399,6 +1485,135 @@ export function SalesInvoiceFormDialog({
             </button>
           ))}
         </div>
+
+        {lineMode === "sales_order" && (
+          <div className="flex flex-wrap items-center gap-2 rounded border border-border bg-muted/10 px-2 py-2">
+            <span className="text-xs font-medium" style={{ color: "var(--navbar)" }}>Select sales order:</span>
+            <select
+              value={selectedSalesOrderId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setSelectedSalesOrderId(id);
+                if (!id) {
+                  setLines([blankLine("0", defaultPriceType), blankLine("1", defaultPriceType), blankLine("2", defaultPriceType)]);
+                  return;
+                }
+                const order = salesOrders.find((o) => o.id === id);
+                if (!order) return;
+                setCustomerId(order.customer_id ?? "");
+                const cust = customers.find((c) => c.id === order.customer_id);
+                setCustomerQuery(cust ? `${cust.tax_id ? `${cust.tax_id} - ` : ""}${cust.name}` : "");
+                setSalesRepId(order.sales_rep_id ?? "");
+                setLocationId(order.location_id ?? "");
+                setInvoiceDate(order.order_date ?? new Date().toISOString().slice(0, 10));
+                setDeliveryDate(order.delivery_date ?? "");
+                setNotes(order.notes ?? "");
+                const orderLines = salesOrderLines
+                  .filter((l) => l.sales_order_id === id)
+                  .sort((a, b) => Number(a.row_no ?? 0) - Number(b.row_no ?? 0));
+                const mapped = orderLines.map((l, i) => {
+                  const prod = productLookup.byId.get(String(l.product_id ?? ""));
+                  const el: EditLine = {
+                    key: String(i),
+                    product_id: String(l.product_id ?? ""),
+                    item_code: prod?.code ?? "",
+                    item_name: l.item_name_snapshot ?? prod?.name ?? "",
+                    price_type: l.price_type ?? defaultPriceType,
+                    pack_unit: fmt(n(l.pack_unit), 2),
+                    qty: fmt(n(l.qty), 2),
+                    cl_qty: fmt(n(l.cl_qty), 4),
+                    price_ex: fmt(n(l.price_ex), 6),
+                    pre_tax: fmt(n(l.price_ex) * n(l.cl_qty), 2),
+                    price_tax_inc: fmt(n(l.price_tax_inc), 2),
+                    tax_rate: fmt(n(l.tax_rate), 3),
+                    tax_amount: fmt(n(l.tax_amount), 2),
+                    value_tax_inc: fmt(n(l.value_tax_inc), 2),
+                  };
+                  return computeDerived(el);
+                });
+                setLines(mapped.length > 0 ? [...mapped, blankLine(String(mapped.length), defaultPriceType)] : [blankLine("0", defaultPriceType), blankLine("1", defaultPriceType), blankLine("2", defaultPriceType)]);
+              }}
+              className="h-7 rounded border border-input bg-background px-2 text-xs"
+            >
+              <option value="">— Select sales order —</option>
+              {filteredSalesOrders.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.order_no} ({o.order_date})
+                </option>
+              ))}
+            </select>
+            {customerId ? null : <span className="text-xs text-muted-foreground">Select a customer first to filter orders.</span>}
+          </div>
+        )}
+
+        {lineMode === "van_sales" && (
+          <div className="flex flex-wrap items-center gap-2 rounded border border-border bg-muted/10 px-2 py-2">
+            <span className="text-xs font-medium" style={{ color: "var(--navbar)" }}>Select load out sheet:</span>
+            <select
+              value={selectedLoadOutSheetId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setSelectedLoadOutSheetId(id);
+                if (!id) {
+                  setLines([blankLine("0", defaultPriceType), blankLine("1", defaultPriceType), blankLine("2", defaultPriceType)]);
+                  return;
+                }
+                const sheet = loadOutSheets.find((s) => s.id === id);
+                if (!sheet) return;
+                setSalesRepId(sheet.sales_rep_id ?? "");
+                setLocationId(sheet.location_id ?? "");
+                setInvoiceDate(sheet.sales_date ?? new Date().toISOString().slice(0, 10));
+                setDriverName(sheet.driver_name ?? "");
+                setVehicleNo(sheet.vehicle_no ?? "");
+                setCustomerId(sheet.customer_id ?? "");
+                const cust = customers.find((c) => c.id === sheet.customer_id);
+                setCustomerQuery(cust ? `${cust.tax_id ? `${cust.tax_id} - ` : ""}${cust.name}` : "");
+                if (cust?.price_type) setDefaultPriceType(cust.price_type);
+                const sheetLines = loadOutSheetLines
+                  .filter((l) => l.load_out_sheet_id === id && n(l.van_sales_qty) > 0)
+                  .sort((a, b) => Number(a.row_no ?? 0) - Number(b.row_no ?? 0));
+                const mapped = sheetLines.map((l, i) => {
+                  const prod = productLookup.byId.get(String(l.product_id ?? ""));
+                  const packUnit = n(prod?.pack_unit ?? 0) || 1;
+                  const qtyVal = n(l.van_sales_qty);
+                  const clQty = qtyVal;
+                  const priceTaxInc = n(l.unit_price);
+                  const valueTaxInc = n(l.sales_value);
+                  const taxRate = 0;
+                  const taxAmount = valueTaxInc - (valueTaxInc / (1 + taxRate / 100));
+                  const el: EditLine = {
+                    key: String(i),
+                    product_id: String(l.product_id ?? ""),
+                    item_code: l.product_code_snapshot ?? prod?.code ?? "",
+                    item_name: l.product_name_snapshot ?? prod?.name ?? "",
+                    price_type: defaultPriceType,
+                    pack_unit: fmt(packUnit, 2),
+                    qty: fmt(qtyVal * packUnit, 2),
+                    cl_qty: fmt(clQty, 4),
+                    price_ex: fmt(priceTaxInc / (1 + taxRate / 100), 6),
+                    pre_tax: fmt((priceTaxInc / (1 + taxRate / 100)) * clQty, 2),
+                    price_tax_inc: fmt(priceTaxInc, 2),
+                    tax_rate: fmt(taxRate, 3),
+                    tax_amount: fmt(taxAmount, 2),
+                    value_tax_inc: fmt(valueTaxInc, 2),
+                  };
+                  return computeDerived(el);
+                });
+                setLines(mapped);
+              }}
+              className="h-7 rounded border border-input bg-background px-2 text-xs"
+            >
+              <option value="">— Select load out sheet —</option>
+              {filteredLoadOutSheets.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.sheet_no} ({s.sales_date})
+                </option>
+              ))}
+            </select>
+            {salesRepId ? null : <span className="text-xs text-muted-foreground">Select a sales rep (optional) to filter sheets.</span>}
+            {linesReadOnly && <span className="text-xs text-amber-600">Van sales lines are read-only.</span>}
+          </div>
+        )}
 
         <div className="rounded border border-border">
           <table className="w-full table-fixed text-xs">
@@ -1480,7 +1695,7 @@ export function SalesInvoiceFormDialog({
                         className={`h-7 w-full rounded-none border-0 px-1 text-xs outline-none ${
                           promoRow ? "bg-amber-50/80 font-medium text-amber-900" : "bg-transparent focus:bg-background"
                         }`}
-                        disabled={isPosted || promoRow}
+                        disabled={isPosted || promoRow || linesReadOnly}
                       />
                       {!promoRow && lineDropdown?.row === idx && lineDropdown.field === "code" && codeMatches.length > 0 && (
                         <div className="absolute left-0 top-full z-[80] mt-0.5 max-h-48 min-w-[22rem] overflow-auto rounded border border-border bg-background shadow-xl">
@@ -1531,7 +1746,7 @@ export function SalesInvoiceFormDialog({
                             ? "bg-amber-50/80 font-semibold text-amber-900"
                             : "bg-transparent focus:bg-background"
                         }`}
-                        disabled={isPosted || promoRow}
+                        disabled={isPosted || promoRow || linesReadOnly}
                       />
                       {!promoRow && lineDropdown?.row === idx && lineDropdown.field === "name" && nameMatches.length > 0 && (
                         <div className="absolute left-0 top-full z-[80] mt-0.5 max-h-48 min-w-[26rem] overflow-auto rounded border border-border bg-background shadow-xl">
@@ -1569,7 +1784,7 @@ export function SalesInvoiceFormDialog({
                         });
                       }}
                       className="h-7 w-full rounded-none border-0 bg-transparent px-1 text-xs outline-none focus:bg-background"
-                      disabled={isPosted || promoRow}
+                      disabled={isPosted || promoRow || linesReadOnly}
                     >
                       <option value="">--</option>
                       {priceTypes.map((pt) => (
@@ -1595,7 +1810,7 @@ export function SalesInvoiceFormDialog({
                         });
                       }}
                       className="h-7 w-full rounded-none border-0 bg-transparent px-1 text-right text-xs outline-none focus:bg-background"
-                      disabled={isPosted || promoRow}
+                      disabled={isPosted || promoRow || linesReadOnly}
                     />
                   </td>
                   <td className="border-b border-r border-border px-1 py-0.5">
@@ -1616,7 +1831,7 @@ export function SalesInvoiceFormDialog({
                         });
                       }}
                       className="h-7 w-full rounded-none border-0 bg-transparent px-1 text-right text-xs outline-none focus:bg-background"
-                      disabled={isPosted || promoRow}
+                      disabled={isPosted || promoRow || linesReadOnly}
                     />
                   </td>
                   <td className="border-b border-r border-border px-1 py-0.5">
@@ -1633,7 +1848,7 @@ export function SalesInvoiceFormDialog({
                         nextItemInput?.select();
                       }}
                       className="h-7 w-full rounded-none border-0 bg-transparent px-1 text-right text-xs outline-none focus:bg-background"
-                      disabled={isPosted || promoRow}
+                      disabled={isPosted || promoRow || linesReadOnly}
                     />
                   </td>
                   <td className="border-b border-r border-border px-1 py-0.5">
@@ -1651,7 +1866,7 @@ export function SalesInvoiceFormDialog({
                       onChange={(e) => updateLine(idx, { price_tax_inc: e.target.value })}
                       onBlur={(e) => updateLine(idx, { price_tax_inc: fmtCommaInput(e.target.value, 2) })}
                       className="h-7 w-full rounded-none border-0 bg-transparent px-1 text-right text-xs outline-none focus:bg-background"
-                      disabled={isPosted || promoRow}
+                      disabled={isPosted || promoRow || linesReadOnly}
                     />
                   </td>
                   <td className="border-b border-r border-border px-1 py-0.5">
@@ -1662,7 +1877,7 @@ export function SalesInvoiceFormDialog({
                       type="button"
                       onClick={() => deleteLine(idx)}
                       className="inline-flex h-6 w-6 items-center justify-center rounded border border-input bg-background hover:bg-muted disabled:opacity-50"
-                      disabled={isPosted || promoRow}
+                      disabled={isPosted || promoRow || linesReadOnly}
                       aria-label="Delete line"
                     >
                       <Trash2 className="h-3.5 w-3.5 text-destructive" />

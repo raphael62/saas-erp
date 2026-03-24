@@ -1,23 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import { SupplierList } from "@/components/purchases/supplier-list";
+import { requireOrgId } from "@/lib/org-context";
+import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 
 export default async function SuppliersPage() {
+  const { orgId } = await requireOrgId();
+  if (!orgId) return <NoOrgPrompt />;
+
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) {
-    return <div><p className="text-muted-foreground">Loading organization…</p></div>;
-  }
-
   const suppliersRes = await supabase
     .from("suppliers")
     .select(

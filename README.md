@@ -31,9 +31,24 @@ npm install
 
 Copy `.env.example` to `.env.local` and set:
 
-- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` from [Supabase](https://supabase.com) project settings
+- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` from a **development** [Supabase](https://supabase.com) project (see [Development vs production](#development-vs-production-databases) below)
+- `SUPABASE_SERVICE_ROLE_KEY` from the same dev project (Settings → API → service_role)
 - `NEXT_PUBLIC_APP_URL` (e.g. `http://localhost:3000`)
+- Optional for local dev: `DEV_BYPASS_ORG=1` and `PLATFORM_ADMIN_EMAILS` — **never** set these on production
 - For Stripe: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+
+### Development vs production databases
+
+Use **two Supabase projects**: one for local development and one for production (deployed on Vercel). Pointing both at the same database causes mixed data, unpredictable login, and org/profile issues.
+
+| Environment | Where credentials live | Notes |
+|-------------|------------------------|--------|
+| Local | `.env.local` | Dev project URL and keys; you can use `DEV_BYPASS_ORG=1` for easier access |
+| Production | Vercel → Environment Variables | Production project only; do **not** set `DEV_BYPASS_ORG` |
+
+**New developer setup:** create a dev Supabase project, run all migrations in `supabase/migrations/` on it (SQL Editor or `supabase link` + `supabase db push`), then put that project’s keys in `.env.local`. Seed a test user with `npm run seed:admin` if needed.
+
+**Ongoing migrations:** apply new SQL to the dev project first, then to production after you verify.
 
 ### 3. Database (Supabase)
 
@@ -73,5 +88,5 @@ Use the printed webhook secret in `.env.local` as `STRIPE_WEBHOOK_SECRET`.
 ## Deploy on Vercel
 
 1. Push the repo to GitHub and import the project in Vercel.
-2. Add the same env vars in Vercel (Supabase, Stripe, `NEXT_PUBLIC_APP_URL` = `https://masterbookserp.com` or your custom domain).
-3. In Stripe Dashboard, add a webhook endpoint: `https://your-app.vercel.app/api/webhooks/stripe` and set `STRIPE_WEBHOOK_SECRET` in Vercel.
+2. Add environment variables for **production** only: your **production** Supabase URL, anon key, and service role key (not your local dev project). Set `NEXT_PUBLIC_APP_URL` to `https://masterbookserp.com` or your custom domain. Set `PLATFORM_ADMIN_EMAILS` if you need platform-admin access; do **not** set `DEV_BYPASS_ORG`.
+3. Add Stripe keys as needed. In Stripe Dashboard, add a webhook endpoint: `https://your-app.vercel.app/api/webhooks/stripe` and set `STRIPE_WEBHOOK_SECRET` in Vercel.

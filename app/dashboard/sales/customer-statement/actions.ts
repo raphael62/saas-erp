@@ -1,6 +1,10 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { isTableUnavailableError, isSchemaCacheError } from "@/lib/supabase/table-missing";
+
+const SCHEMA_CACHE_MSG =
+  "PostgREST schema cache is out of sync. Click 'Reload schema' then try again.";
 
 type CustomerRow = {
   id: string;
@@ -44,21 +48,10 @@ function normalizeDate(input: string | null | undefined) {
 }
 
 async function getOrgContext() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { supabase, orgId: null as string | null, error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id ?? null;
-  if (!orgId) return { supabase, orgId: null as string | null, error: "No organization" };
-  return { supabase, orgId, error: null as string | null };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
+  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
 }
 
 export async function getCustomerStatement(fromDateInput: string, toDateInput: string) {
@@ -75,24 +68,25 @@ export async function getCustomerStatement(fromDateInput: string, toDateInput: s
     .select("id, name, phone, contact_person, tax_id")
     .eq("organization_id", orgId)
     .order("name");
-  if (customersRes.error) return { error: customersRes.error.message };
+  if (customersRes.error)
+    return { error: isSchemaCacheError(customersRes.error) ? SCHEMA_CACHE_MSG : customersRes.error.message };
 
   const salesRes = await supabase
     .from("sales_invoices")
     .select("id, customer_id, invoice_date, invoice_no, grand_total")
     .eq("organization_id", orgId)
     .lte("invoice_date", toDate);
-  if (salesRes.error) return { error: salesRes.error.message };
+  if (salesRes.error)
+    return { error: isSchemaCacheError(salesRes.error) ? SCHEMA_CACHE_MSG : salesRes.error.message };
 
   const paymentsRes = await supabase
     .from("customer_payments")
     .select("id, customer_id, payment_date, payment_no, amount")
     .eq("organization_id", orgId)
     .lte("payment_date", toDate);
-  const paymentsMissing = Boolean(
-    paymentsRes.error && paymentsRes.error.message.toLowerCase().includes("does not exist")
-  );
-  if (paymentsRes.error && !paymentsMissing) return { error: paymentsRes.error.message };
+  const paymentsMissing = Boolean(paymentsRes.error && isTableUnavailableError(paymentsRes.error));
+  if (paymentsRes.error && !paymentsMissing)
+    return { error: isSchemaCacheError(paymentsRes.error) ? SCHEMA_CACHE_MSG : paymentsRes.error.message };
 
   const openingByCustomer = new Map<string, number>();
   const salesByCustomer = new Map<string, number>();
@@ -185,7 +179,8 @@ export async function getCustomerStatementTransactions(
     .eq("organization_id", orgId)
     .eq("customer_id", customerId)
     .lt("invoice_date", fromDate);
-  if (preSalesRes.error) return { error: preSalesRes.error.message };
+  if (preSalesRes.error)
+    return { error: isSchemaCacheError(preSalesRes.error) ? SCHEMA_CACHE_MSG : preSalesRes.error.message };
 
   const prePaymentsRes = await supabase
     .from("customer_payments")
@@ -193,10 +188,9 @@ export async function getCustomerStatementTransactions(
     .eq("organization_id", orgId)
     .eq("customer_id", customerId)
     .lt("payment_date", fromDate);
-  const prePaymentsMissing = Boolean(
-    prePaymentsRes.error && prePaymentsRes.error.message.toLowerCase().includes("does not exist")
-  );
-  if (prePaymentsRes.error && !prePaymentsMissing) return { error: prePaymentsRes.error.message };
+  const prePaymentsMissing = Boolean(prePaymentsRes.error && isTableUnavailableError(prePaymentsRes.error));
+  if (prePaymentsRes.error && !prePaymentsMissing)
+    return { error: isSchemaCacheError(prePaymentsRes.error) ? SCHEMA_CACHE_MSG : prePaymentsRes.error.message };
 
   let opening = 0;
   for (const row of (preSalesRes.data ?? []) as Array<{ grand_total?: number | null }>) {
@@ -215,7 +209,8 @@ export async function getCustomerStatementTransactions(
     .eq("customer_id", customerId)
     .gte("invoice_date", fromDate)
     .lte("invoice_date", toDate);
-  if (salesRes.error) return { error: salesRes.error.message };
+  if (salesRes.error)
+    return { error: isSchemaCacheError(salesRes.error) ? SCHEMA_CACHE_MSG : salesRes.error.message };
 
   const paymentsRes = await supabase
     .from("customer_payments")
@@ -224,10 +219,9 @@ export async function getCustomerStatementTransactions(
     .eq("customer_id", customerId)
     .gte("payment_date", fromDate)
     .lte("payment_date", toDate);
-  const paymentsMissing = Boolean(
-    paymentsRes.error && paymentsRes.error.message.toLowerCase().includes("does not exist")
-  );
-  if (paymentsRes.error && !paymentsMissing) return { error: paymentsRes.error.message };
+  const paymentsMissing = Boolean(paymentsRes.error && isTableUnavailableError(paymentsRes.error));
+  if (paymentsRes.error && !paymentsMissing)
+    return { error: isSchemaCacheError(paymentsRes.error) ? SCHEMA_CACHE_MSG : paymentsRes.error.message };
 
   const txRaw: Array<Omit<TxRow, "balance">> = [];
   for (const row of (salesRes.data ?? []) as Array<{

@@ -124,6 +124,57 @@ type PromotionRule = {
   row_no?: number | null;
 };
 
+type SalesOrder = {
+  id: string;
+  order_no: string;
+  customer_id?: string | null;
+  sales_rep_id?: string | null;
+  location_id?: string | null;
+  order_date: string;
+  delivery_date?: string | null;
+  notes?: string | null;
+};
+
+type SalesOrderLine = {
+  id: string;
+  sales_order_id: string;
+  product_id?: string | null;
+  item_name_snapshot?: string | null;
+  price_type?: string | null;
+  pack_unit?: number | null;
+  qty?: number | null;
+  cl_qty?: number | null;
+  price_ex?: number | null;
+  price_tax_inc?: number | null;
+  tax_rate?: number | null;
+  tax_amount?: number | null;
+  value_tax_inc?: number | null;
+  row_no?: number | null;
+};
+
+type LoadOutSheet = {
+  id: string;
+  sheet_no: string;
+  sales_rep_id?: string | null;
+  location_id?: string | null;
+  sales_date: string;
+  vehicle_no?: string | null;
+  driver_name?: string | null;
+  customer_id?: string | null;
+};
+
+type LoadOutSheetLine = {
+  id: string;
+  load_out_sheet_id: string;
+  product_id?: string | null;
+  product_code_snapshot?: string | null;
+  product_name_snapshot?: string | null;
+  van_sales_qty?: number | null;
+  unit_price?: number | null;
+  sales_value?: number | null;
+  row_no?: number | null;
+};
+
 type SortCol =
   | "invoice_no"
   | "customer"
@@ -151,6 +202,10 @@ export function SalesInvoiceList({
   priceListItems = [],
   promotions = [],
   promotionRules = [],
+  salesOrders = [],
+  salesOrderLines = [],
+  loadOutSheets = [],
+  loadOutSheetLines = [],
   editId,
 }: {
   invoices: Invoice[];
@@ -164,6 +219,10 @@ export function SalesInvoiceList({
   priceListItems: PriceListItem[];
   promotions: Promotion[];
   promotionRules: PromotionRule[];
+  salesOrders?: SalesOrder[];
+  salesOrderLines?: SalesOrderLine[];
+  loadOutSheets?: LoadOutSheet[];
+  loadOutSheetLines?: LoadOutSheetLine[];
   editId?: string;
 }) {
   const router = useRouter();
@@ -495,6 +554,10 @@ export function SalesInvoiceList({
         promotions={promotions}
         promotionRules={promotionRules}
         invoices={invoices}
+        salesOrders={salesOrders}
+        salesOrderLines={salesOrderLines}
+        loadOutSheets={loadOutSheets}
+        loadOutSheetLines={loadOutSheetLines}
         initialInvoice={editing}
         initialLines={editing ? lineMap.get(editing.id) ?? [] : []}
       />

@@ -22,19 +22,10 @@ type TemplatePayload = {
 };
 
 async function getCurrentOrgId() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" as const };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" as const };
-  return { orgId, userId: user.id, supabase };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const result = await getOrgContextForAction();
+  if (!result.ok) return { error: result.error as "Unauthorized" | "No organization" };
+  return { orgId: result.orgId, userId: result.userId, supabase: result.supabase };
 }
 
 function buildProductPayload(formData: FormData, orgId: string) {

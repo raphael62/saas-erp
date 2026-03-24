@@ -3,20 +3,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { parseBool, parseCsv, parseNumber } from "@/lib/csv";
+import { getOrgContextForAction } from "@/lib/org-context";
 
 export async function addCustomer(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { error: ctx.error };
+  const { orgId, supabase } = ctx;
 
   const name = formData.get("name") as string;
   const contactPerson = (formData.get("contact_person") as string) || null;
@@ -56,18 +48,9 @@ export async function addCustomer(formData: FormData) {
 }
 
 export async function updateCustomer(id: string, formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { error: ctx.error };
+  const { orgId, supabase } = ctx;
 
   const name = formData.get("name") as string;
   const contactPerson = (formData.get("contact_person") as string) || null;
@@ -119,17 +102,9 @@ export async function deleteCustomer(id: string) {
 }
 
 export async function importCustomersCsv(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { error: ctx.error };
+  const { orgId, supabase } = ctx;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };

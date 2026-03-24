@@ -5,18 +5,10 @@ import { revalidatePath } from "next/cache";
 import { parseBool, parseCsv } from "@/lib/csv";
 
 export async function addSalesRep(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { error: ctx.error };
+  const { orgId, supabase } = ctx;
 
   const code = (formData.get("code") as string) || null;
   const firstName = ((formData.get("first_name") as string) || "").trim();
@@ -88,17 +80,10 @@ export async function updateSalesRep(id: string, formData: FormData) {
 }
 
 export async function importSalesRepsCsv(formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization" };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { error: ctx.error };
+  const { orgId, supabase } = ctx;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };

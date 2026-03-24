@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   LayoutDashboard,
+  Layers,
   Menu,
   X,
   Search,
@@ -14,23 +15,32 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { MainNavItem } from "./nav-config";
+import { getNavIcon } from "./nav-icons";
+import type { MainNavItemSerialized } from "@/lib/nav-items";
 
 interface TopNavbarProps {
   userEmail: string | undefined;
   userName?: string;
   userRole?: string | null;
-  navItems: MainNavItem[];
+  navItems: MainNavItemSerialized[];
 }
+
+const DEFAULT_MODULE: MainNavItemSerialized = {
+  href: "/dashboard",
+  label: "Dashboard",
+  iconKey: "LayoutDashboard",
+  subItems: [{ href: "/dashboard", label: "Overview", iconKey: "LayoutDashboard" }],
+};
 
 export default function TopNavbar({ userEmail, userName, userRole, navItems }: TopNavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const pathname = usePathname();
 
-  const currentModule = navItems.find(
-    (m) => m.href === pathname || (m.href !== "/dashboard" && pathname.startsWith(m.href))
-  ) ?? navItems[0];
+  const currentModule =
+    navItems.find(
+      (m) => m.href === pathname || (m.href !== "/dashboard" && pathname.startsWith(m.href))
+    ) ?? navItems[0] ?? DEFAULT_MODULE;
 
   return (
     <>
@@ -49,9 +59,7 @@ export default function TopNavbar({ userEmail, userName, userRole, navItems }: T
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
           <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-white/10 text-lg font-bold">
-              M
-            </div>
+            <Layers className="h-8 w-8 shrink-0" strokeWidth={2} style={{ color: "var(--navbar-foreground)" }} />
             <span className="hidden sm:inline-block">MasterBooks ERP</span>
           </Link>
           <div className="hidden flex-1 items-center justify-center gap-3 md:flex">
@@ -134,7 +142,10 @@ export default function TopNavbar({ userEmail, userName, userRole, navItems }: T
                       : "border-transparent text-muted-foreground hover:text-foreground"
                   )}
                 >
-                  <item.icon className={cn("h-4 w-4 shrink-0", isActive && "text-[var(--navbar)]")} />
+                  {(() => {
+                    const Icon = getNavIcon(item.iconKey);
+                    return <Icon className={cn("h-4 w-4 shrink-0", isActive && "text-[var(--navbar)]")} />;
+                  })()}
                   {item.label}
                 </Link>
               );
@@ -178,7 +189,10 @@ export default function TopNavbar({ userEmail, userName, userRole, navItems }: T
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
-                <item.icon className="h-5 w-5 shrink-0" />
+                {(() => {
+                  const Icon = getNavIcon(item.iconKey);
+                  return <Icon className="h-5 w-5 shrink-0" />;
+                })()}
                 {item.label}
               </Link>
             );

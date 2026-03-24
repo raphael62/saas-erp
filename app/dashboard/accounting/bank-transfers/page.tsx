@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { BankTransfers } from "@/components/accounting/bank-transfers";
+import { getProfileWithOrg } from "@/lib/org-context";
+import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 
 export default async function BankTransfersPage() {
   const supabase = await createClient();
@@ -11,16 +13,8 @@ export default async function BankTransfersPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) {
-    return <p className="text-sm text-muted-foreground">Loading organization…</p>;
-  }
+  const { orgId } = await getProfileWithOrg(user.id, user.email ?? undefined);
+  if (!orgId) return <NoOrgPrompt />;
 
   const [transfersRes, accountsRes] = await Promise.all([
     supabase

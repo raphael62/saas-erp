@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "seed:admin": "node scripts/seed-admin.mjs",
+    "reset:admin-password": "node scripts/reset-admin-password.mjs",
+    "fix:admin-org": "node scripts/fix-admin-org.mjs",
+    "fix:orphans": "node scripts/fix-all-orphan-profiles.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -33,6 +37,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.1.9",
     "postcss": "^8",
+    "supabase": "^2.83.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

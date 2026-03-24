@@ -76,6 +76,19 @@ export default function SalesPage() {
             </CardContent>
           </Card>
         </Link>
+        <Link href="/dashboard/sales/sales-orders">
+          <Card className="h-full transition-colors hover:bg-muted/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Sales Orders</CardTitle>
+              <CardDescription>Create and manage pre-invoice sales orders</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button variant="secondary" size="sm" asChild>
+                <span>Open</span>
+              </Button>
+            </CardContent>
+          </Card>
+        </Link>
         <Link href="/dashboard/sales/sales-invoices">
           <Card className="h-full transition-colors hover:bg-muted/50">
             <CardHeader className="pb-2">
@@ -154,12 +167,6 @@ export default function SalesPage() {
             </CardContent>
           </Card>
         </Link>
-        <Card className="h-full opacity-75">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Sales orders</CardTitle>
-            <CardDescription>Coming soon</CardDescription>
-          </CardHeader>
-        </Card>
       </div>
     </div>
   );

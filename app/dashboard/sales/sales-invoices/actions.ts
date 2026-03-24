@@ -21,22 +21,12 @@ type InvoiceLineInput = {
 };
 
 async function getOrgContext() {
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { supabase: ctx.supabase, user: null, orgId: null as string | null, error: ctx.error };
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { supabase, user: null, orgId: null as string | null, error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id ?? null;
-  if (!orgId) return { supabase, user, orgId: null as string | null, error: "No organization" };
-
-  return { supabase, user, orgId, error: null as string | null };
+  const { data: { user } } = await supabase.auth.getUser();
+  return { supabase, user: user ?? null, orgId: ctx.orgId, error: null as string | null };
 }
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0) {

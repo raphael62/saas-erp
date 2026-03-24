@@ -1,6 +1,10 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { isTableUnavailableError, isSchemaCacheError } from "@/lib/supabase/table-missing";
+
+const SCHEMA_CACHE_MSG =
+  "PostgREST schema cache is out of sync. Click 'Reload schema' then try again.";
 
 type SummaryRow = {
   customer_id: string;
@@ -76,21 +80,10 @@ function getQty(map: Map<string, Map<string, number>>, customerId: string, empti
 }
 
 async function getOrgContext() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { supabase, orgId: null as string | null, error: "Unauthorized" };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id ?? null;
-  if (!orgId) return { supabase, orgId: null as string | null, error: "No organization" };
-  return { supabase, orgId, error: null as string | null };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
+  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
 }
 
 export async function getCustomerEmptiesStatement(fromDateInput: string, toDateInput: string) {
@@ -107,14 +100,16 @@ export async function getCustomerEmptiesStatement(fromDateInput: string, toDateI
     .select("id, name, phone, contact_person, tax_id")
     .eq("organization_id", orgId)
     .order("name");
-  if (customersRes.error) return { error: customersRes.error.message };
+  if (customersRes.error)
+    return { error: isSchemaCacheError(customersRes.error) ? SCHEMA_CACHE_MSG : customersRes.error.message };
 
   const productsRes = await supabase
     .from("products")
     .select("id, name, empties_type, returnable")
     .eq("organization_id", orgId)
     .or("returnable.eq.true,name.ilike.%empties%");
-  if (productsRes.error) return { error: productsRes.error.message };
+  if (productsRes.error)
+    return { error: isSchemaCacheError(productsRes.error) ? SCHEMA_CACHE_MSG : productsRes.error.message };
 
   const productInfoById = new Map<string, ProductInfo>();
   const displayNameByKey = new Map<string, string>();
@@ -145,7 +140,8 @@ export async function getCustomerEmptiesStatement(fromDateInput: string, toDateI
     .select("product_id, cl_qty, sales_invoices!inner(customer_id, invoice_date)")
     .eq("organization_id", orgId)
     .lte("sales_invoices.invoice_date", toDate);
-  if (salesRes.error) return { error: salesRes.error.message };
+  if (salesRes.error)
+    return { error: isSchemaCacheError(salesRes.error) ? SCHEMA_CACHE_MSG : salesRes.error.message };
 
   for (const row of (salesRes.data ?? []) as Array<{
     product_id?: string | null;
@@ -185,8 +181,8 @@ export async function getCustomerEmptiesStatement(fromDateInput: string, toDateI
     .select("product_id, received_qty, empties_receives!inner(customer_id, receive_date)")
     .eq("organization_id", orgId)
     .lte("empties_receives.receive_date", toDate);
-  if (receivesRes.error && !receivesRes.error.message.toLowerCase().includes("does not exist")) {
-    return { error: receivesRes.error.message };
+  if (receivesRes.error && !isTableUnavailableError(receivesRes.error)) {
+    return { error: isSchemaCacheError(receivesRes.error) ? SCHEMA_CACHE_MSG : receivesRes.error.message };
   }
 
   for (const row of (receivesRes.data ?? []) as Array<{
@@ -298,7 +294,8 @@ export async function getCustomerEmptiesTypeTransactions(
     .select("id, name, empties_type, returnable")
     .eq("organization_id", orgId)
     .ilike("empties_type", emptiesType);
-  if (productsRes.error) return { error: productsRes.error.message };
+  if (productsRes.error)
+    return { error: isSchemaCacheError(productsRes.error) ? SCHEMA_CACHE_MSG : productsRes.error.message };
 
   const productInfoById = new Map<string, ProductInfo>();
   for (const row of (productsRes.data ?? []) as Array<{
@@ -400,7 +397,8 @@ export async function getCustomerEmptiesTypeTransactions(
     .gte("sales_invoices.invoice_date", fromDate)
     .lte("sales_invoices.invoice_date", toDate)
     .in("product_id", productIds);
-  if (salesRes.error) return { error: salesRes.error.message };
+  if (salesRes.error)
+    return { error: isSchemaCacheError(salesRes.error) ? SCHEMA_CACHE_MSG : salesRes.error.message };
 
   for (const row of (salesRes.data ?? []) as Array<{
     sales_invoice_id?: string | null;
@@ -443,8 +441,8 @@ export async function getCustomerEmptiesTypeTransactions(
     .gte("empties_receives.receive_date", fromDate)
     .lte("empties_receives.receive_date", toDate)
     .in("product_id", productIds);
-  if (receiveRes.error && !receiveRes.error.message.toLowerCase().includes("does not exist")) {
-    return { error: receiveRes.error.message };
+  if (receiveRes.error && !isTableUnavailableError(receiveRes.error)) {
+    return { error: isSchemaCacheError(receiveRes.error) ? SCHEMA_CACHE_MSG : receiveRes.error.message };
   }
 
   for (const row of (receiveRes.data ?? []) as Array<{

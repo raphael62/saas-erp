@@ -1,23 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ActivitiesPanel } from "@/components/dashboard/activities-panel";
 import { QuickActions } from "@/components/dashboard/quick-actions";
+import { requireOrgId } from "@/lib/org-context";
+import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 
 export default async function DashboardPage() {
+  const { orgId } = await requireOrgId();
+  if (!orgId) return <NoOrgPrompt />;
+
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
 
   let productCount = 0;
   let customerCount = 0;

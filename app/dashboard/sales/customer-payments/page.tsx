@@ -1,6 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { CustomerPayments } from "@/components/sales/customer-payments";
+import { getProfileWithOrg } from "@/lib/org-context";
+import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import { isTableUnavailableError, isSchemaCacheError } from "@/lib/supabase/table-missing";
 
 export default async function CustomerPaymentsPage({
   searchParams,
@@ -16,15 +19,8 @@ export default async function CustomerPaymentsPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) {
-    return <p className="text-muted-foreground">Loading organization...</p>;
-  }
+  const { orgId } = await getProfileWithOrg(user.id, user.email ?? undefined);
+  if (!orgId) return <NoOrgPrompt />;
 
   const [paymentsRes, customersRes, paymentMethodsRes, accountsRes] = await Promise.all([
     supabase
@@ -53,9 +49,8 @@ export default async function CustomerPaymentsPage({
       .order("code"),
   ]);
 
-  const paymentsMissing = Boolean(
-    paymentsRes.error && paymentsRes.error.message.toLowerCase().includes("does not exist")
-  );
+  const paymentsMissing = Boolean(paymentsRes.error && isTableUnavailableError(paymentsRes.error));
+  const schemaCacheStale = Boolean(paymentsRes.error && isSchemaCacheError(paymentsRes.error));
   if (paymentsRes.error && !paymentsMissing) {
     return <p className="text-destructive text-sm">{paymentsRes.error.message}</p>;
   }
@@ -86,6 +81,7 @@ export default async function CustomerPaymentsPage({
       paymentMethods={paymentMethods as Parameters<typeof CustomerPayments>[0]["paymentMethods"]}
       paymentAccounts={paymentAccounts}
       paymentsMissing={paymentsMissing}
+      schemaCacheStale={schemaCacheStale}
       editId={editId}
     />
   );

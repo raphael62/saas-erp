@@ -5,21 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { parseBool, parseCsv, parseNumber } from "@/lib/csv";
 
 async function getOrgId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized", supabase, orgId: null as string | null };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) return { error: "No organization", supabase, orgId: null as string | null };
-  return { error: null as string | null, supabase, orgId };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { error: ctx.error, supabase: ctx.supabase, orgId: null as string | null };
+  return { error: null as string | null, supabase: ctx.supabase, orgId: ctx.orgId };
 }
 
 export async function savePriceList(formData: FormData) {

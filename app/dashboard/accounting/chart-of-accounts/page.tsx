@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { ChartOfAccountsTable } from "@/components/accounting/chart-of-accounts-table";
+import { getProfileWithOrg } from "@/lib/org-context";
+import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 
 export default async function ChartOfAccountsPage() {
   const supabase = await createClient();
@@ -11,16 +13,8 @@ export default async function ChartOfAccountsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id;
-  if (!orgId) {
-    return <p className="text-muted-foreground text-sm">Loading organization…</p>;
-  }
+  const { orgId } = await getProfileWithOrg(user.id, user.email ?? undefined);
+  if (!orgId) return <NoOrgPrompt />;
 
   const { data: accounts, error } = await supabase
     .from("chart_of_accounts")

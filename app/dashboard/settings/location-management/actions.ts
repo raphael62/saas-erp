@@ -4,22 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 async function getOrganizationId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { supabase, error: "Unauthorized" as const, orgId: null };
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-
-  const orgId = (profile as { organization_id?: string } | null)?.organization_id ?? null;
-  if (!orgId) return { supabase, error: "No organization" as const, orgId: null };
-
-  return { supabase, error: null, orgId };
+  const { getOrgContextForAction } = await import("@/lib/org-context");
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { supabase: ctx.supabase, error: ctx.error as "Unauthorized" | "No organization", orgId: null };
+  return { supabase: ctx.supabase, error: null, orgId: ctx.orgId };
 }
 
 export async function addLocation(formData: FormData) {
