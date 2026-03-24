@@ -67,9 +67,25 @@ export default async function LocationManagementPage() {
       <h1 className="text-xl font-semibold">Location Management</h1>
       {tableError ? (
         <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-          <p className="font-medium">Location table is not ready yet.</p>
-          <p className="mt-1">Run `supabase/ADD_LOCATIONS.sql` in Supabase SQL editor, then refresh this page.</p>
-          <p className="mt-1 text-xs">{tableError}</p>
+          {tableError.toLowerCase().includes("infinite recursion") &&
+          tableError.toLowerCase().includes("profiles") ? (
+            <>
+              <p className="font-medium text-foreground">Database security policy issue (profiles)</p>
+              <p className="mt-1">
+                Apply migration <code className="text-xs">038_fix_profiles_rls_recursion_helpers.sql</code> in the
+                Supabase SQL Editor (or run <code className="text-xs">supabase db push</code>), then refresh.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium">Location table is not ready yet.</p>
+              <p className="mt-1">
+                Run <code className="text-xs">supabase/migrations/006_locations.sql</code> or{" "}
+                <code className="text-xs">ADD_LOCATIONS.sql</code> in Supabase, then refresh.
+              </p>
+            </>
+          )}
+          <p className="mt-2 text-xs opacity-80">{tableError}</p>
         </div>
       ) : (
         <LocationList locations={locations} managers={managers} locationTypes={locationTypes} />
