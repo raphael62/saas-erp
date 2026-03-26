@@ -12,6 +12,11 @@ import {
 const labelClass = "mb-0.5 block text-xs font-medium";
 const inputClass = "h-8 w-full rounded border border-input bg-background px-2.5 text-sm";
 
+function missingLookupTableHint(error: string) {
+  const m = error.toLowerCase();
+  return m.includes("schema cache") || (m.includes("location_types") && m.includes("could not find"));
+}
+
 type LocationType = { id: string; code?: string | null; name: string };
 
 type Props = {
@@ -112,9 +117,15 @@ export function LocationTypeSearchDialog({
         {editingItem ? (
           <form onSubmit={handleEdit} className="space-y-3">
             {error && (
-              <p className="rounded bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
-                {error}
-              </p>
+              <div className="rounded bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+                <p>{error}</p>
+                {missingLookupTableHint(error) && (
+                  <p className="mt-1.5 border-t border-border pt-1.5 text-[11px] leading-snug text-muted-foreground">
+                    Run migration <code className="rounded bg-muted px-1">043_master_data_lookup_tables.sql</code> in the
+                    Supabase SQL Editor or <code className="rounded bg-muted px-1">supabase db push</code>, then refresh.
+                  </p>
+                )}
+              </div>
             )}
             <div>
               <label className={labelClass} style={{ color: "var(--navbar)" }}>
@@ -163,9 +174,15 @@ export function LocationTypeSearchDialog({
         ) : showNewForm ? (
           <form onSubmit={handleAdd} className="space-y-3">
             {error && (
-              <p className="rounded bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
-                {error}
-              </p>
+              <div className="rounded bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+                <p>{error}</p>
+                {missingLookupTableHint(error) && (
+                  <p className="mt-1.5 border-t border-border pt-1.5 text-[11px] leading-snug text-muted-foreground">
+                    Run migration <code className="rounded bg-muted px-1">043_master_data_lookup_tables.sql</code> in the
+                    Supabase SQL Editor or <code className="rounded bg-muted px-1">supabase db push</code>, then refresh.
+                  </p>
+                )}
+              </div>
             )}
             <div>
               <label className={labelClass} style={{ color: "var(--navbar)" }}>

@@ -53,9 +53,9 @@ export default function Sidebar({ navItems }: SidebarProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--navbar)]/35",
                 isActive
-                  ? "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-400"
+                  ? "bg-[color-mix(in_srgb,var(--navbar)_16%,var(--muted))] font-semibold text-[var(--navbar)]"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >

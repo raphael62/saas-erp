@@ -28,6 +28,8 @@ type ProductTemplateSettingsDialogProps = {
   columns: TemplateColumnSetting[];
   onSave: (meta: TemplateMeta, columns: TemplateColumnSetting[]) => Promise<void>;
   saving?: boolean;
+  /** Merged with built-in product column labels (e.g. other list modules). */
+  columnLabels?: Record<string, string>;
 };
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -62,6 +64,7 @@ export function ProductTemplateSettingsDialog({
   columns,
   onSave,
   saving = false,
+  columnLabels,
 }: ProductTemplateSettingsDialogProps) {
   const [name, setName] = useState("");
   const [authorizationUserId, setAuthorizationUserId] = useState("");
@@ -146,7 +149,9 @@ export function ProductTemplateSettingsDialog({
             <tbody>
               {orderedColumns.map((col) => (
                 <tr key={col.column_key} className="border-t border-border">
-                  <td className="px-2 py-2">{COLUMN_LABELS[col.column_key] ?? col.column_key}</td>
+                  <td className="px-2 py-2">
+                    {columnLabels?.[col.column_key] ?? COLUMN_LABELS[col.column_key] ?? col.column_key}
+                  </td>
                   <td className="px-2 py-2">
                     <input
                       type="checkbox"

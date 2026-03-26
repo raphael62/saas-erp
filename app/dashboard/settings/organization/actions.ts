@@ -25,6 +25,7 @@ export type OrgRow = {
   phone: string | null;
   code: string | null;
   created_by: string | null;
+  subscription_ends_at: string | null;
 };
 
 export async function assignOrphanOrg(): Promise<{ error?: string }> {
@@ -113,13 +114,35 @@ export async function getOrganization(): Promise<{ org: OrgRow | null; error?: s
 
   const { data, error } = await ctx.supabase
     .from("organizations")
-    .select("id, name, slug, phone, code, created_by")
+    .select("id, name, slug, phone, code, created_by, subscription_ends_at")
     .eq("id", ctx.orgId)
     .single();
 
-  if (error) return { org: null, error: error.message };
+  if (error) {
+    if (error.message?.includes("subscription_ends_at")) {
+      const { data: fb, error: err2 } = await ctx.supabase
+        .from("organizations")
+        .select("id, name, slug, phone, code, created_by")
+        .eq("id", ctx.orgId)
+        .single();
+      if (err2 || !fb) return { org: null, error: err2?.message ?? error.message };
+      return {
+        org: {
+          id: fb.id,
+          name: fb.name,
+          slug: fb.slug ?? null,
+          phone: fb.phone ?? null,
+          code: (fb as { code?: string }).code ?? null,
+          created_by: fb.created_by ?? null,
+          subscription_ends_at: null,
+        },
+      };
+    }
+    return { org: null, error: error.message };
+  }
   if (!data) return { org: null };
 
+  const row = data as { subscription_ends_at?: string | null };
   return {
     org: {
       id: data.id,
@@ -128,6 +151,7 @@ export async function getOrganization(): Promise<{ org: OrgRow | null; error?: s
       phone: data.phone ?? null,
       code: (data as { code?: string }).code ?? null,
       created_by: data.created_by ?? null,
+      subscription_ends_at: row.subscription_ends_at ?? null,
     },
   };
 }
@@ -172,13 +196,32 @@ export async function updateOrganization(
   const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "org";
   const phone = (formData.get("phone") as string)?.trim() || null;
 
+  const subDate = (formData.get("subscription_ends_date") as string)?.trim() || "";
+  const subscription_ends_at = subDate ? `${subDate}T23:59:59.999Z` : null;
+
+  const updatedAt = new Date().toISOString();
   const { error } = await ctx.supabase
     .from("organizations")
-    .update({ name, slug, phone, updated_at: new Date().toISOString() })
+    .update({
+      name,
+      slug,
+      phone,
+      subscription_ends_at,
+      updated_at: updatedAt,
+    })
     .eq("id", orgId);
 
-  if (error) return { error: error.message };
+  if (error?.message?.includes("subscription_ends_at")) {
+    const { error: err2 } = await ctx.supabase
+      .from("organizations")
+      .update({ name, slug, phone, updated_at: updatedAt })
+      .eq("id", orgId);
+    if (err2) return { error: err2.message };
+  } else if (error) {
+    return { error: error.message };
+  }
 
   revalidatePath("/dashboard/settings/organization");
+  revalidatePath("/dashboard", "layout");
   return {};
 }

@@ -85,6 +85,21 @@ export function OrganizationSetup({ org }: Props) {
             className="h-9 w-full rounded border border-input bg-background px-3 text-sm"
           />
         </div>
+        <div>
+          <label htmlFor="subscription_ends_date" className="mb-1 block text-sm font-medium text-muted-foreground">
+            Subscription end date (optional)
+          </label>
+          <input
+            id="subscription_ends_date"
+            name="subscription_ends_date"
+            type="date"
+            defaultValue={org.subscription_ends_at ? org.subscription_ends_at.slice(0, 10) : ""}
+            className="h-9 w-full rounded border border-input bg-background px-3 text-sm"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Shown in the top bar as days remaining. Leave empty if there is no fixed end date. Uses end of the chosen day (UTC).
+          </p>
+        </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button
           type="submit"

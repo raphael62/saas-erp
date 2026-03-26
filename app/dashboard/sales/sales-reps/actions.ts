@@ -4,6 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { parseBool, parseCsv } from "@/lib/csv";
 
+function mapSalesRepError(message: string) {
+  const m = message.toLowerCase();
+  if (m.includes("schema cache") || (m.includes("sales_reps") && m.includes("email"))) {
+    return "Sales reps schema is outdated in this database. Apply migration 046_sales_reps_schema_repair.sql (or run supabase db push), then refresh.";
+  }
+  return message;
+}
+
 export async function addSalesRep(formData: FormData) {
   const { getOrgContextForAction } = await import("@/lib/org-context");
   const ctx = await getOrgContextForAction();
@@ -35,7 +43,7 @@ export async function addSalesRep(formData: FormData) {
     is_active: isActive,
   });
 
-  if (error) return { error: error.message };
+  if (error) return { error: mapSalesRepError(error.message) };
   revalidatePath("/dashboard/sales/sales-reps");
   revalidatePath("/dashboard/sales/customers");
   return { ok: true };
@@ -73,7 +81,7 @@ export async function updateSalesRep(id: string, formData: FormData) {
     })
     .eq("id", id);
 
-  if (error) return { error: error.message };
+  if (error) return { error: mapSalesRepError(error.message) };
   revalidatePath("/dashboard/sales/sales-reps");
   revalidatePath("/dashboard/sales/customers");
   return { ok: true };
@@ -130,14 +138,14 @@ export async function importSalesRepsCsv(formData: FormData) {
         .update(payload)
         .eq("id", existingId)
         .eq("organization_id", orgId);
-      if (error) return { error: error.message };
+      if (error) return { error: mapSalesRepError(error.message) };
     } else {
       const { data, error } = await supabase
         .from("sales_reps")
         .insert(payload)
         .select("id")
         .single();
-      if (error) return { error: error.message };
+      if (error) return { error: mapSalesRepError(error.message) };
       if (code) byCode.set(code.toLowerCase(), data.id);
       byName.set(fullName.toLowerCase(), data.id);
     }

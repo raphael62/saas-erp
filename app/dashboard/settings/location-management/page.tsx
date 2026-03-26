@@ -72,8 +72,10 @@ export default async function LocationManagementPage() {
             <>
               <p className="font-medium text-foreground">Database security policy issue (profiles)</p>
               <p className="mt-1">
-                Apply migration <code className="text-xs">038_fix_profiles_rls_recursion_helpers.sql</code> in the
-                Supabase SQL Editor (or run <code className="text-xs">supabase db push</code>), then refresh.
+                Run <code className="text-xs">supabase db push</code> (or paste{" "}
+                <code className="text-xs">038_fix_profiles_rls_recursion_helpers.sql</code> then{" "}
+                <code className="text-xs">039_profiles_rls_plpgsql_helpers.sql</code> in the Supabase SQL Editor), then
+                refresh. If you already applied 038, only 039 is required.
               </p>
             </>
           ) : (
