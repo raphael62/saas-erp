@@ -47,16 +47,37 @@ export async function listRoles(): Promise<{ roles: RoleRow[]; error?: string }>
 
   if (!roles?.length) return { roles: [] };
 
-  const { data: counts } = await ctx.supabase
-    .from("profiles")
-    .select("role_id")
-    .in("role_id", roles.map((r) => r.id));
+  const roleIdList = roles.map((r) => r.id);
 
-  const countByRole = (counts ?? []).reduce<Record<string, number>>((acc, p) => {
-    const rid = (p as { role_id?: string }).role_id;
-    if (rid) acc[rid] = (acc[rid] ?? 0) + 1;
-    return acc;
-  }, {});
+  const { data: prLinks } = await ctx.supabase
+    .from("profile_roles")
+    .select("profile_id, role_id")
+    .eq("organization_id", ctx.orgId)
+    .in("role_id", roleIdList);
+
+  const countByRole: Record<string, number> = {};
+  for (const id of roleIdList) countByRole[id] = 0;
+
+  const profilesWithJunction = new Set<string>();
+  for (const row of prLinks ?? []) {
+    const rid = (row as { profile_id: string; role_id: string }).role_id;
+    const pid = (row as { profile_id: string; role_id: string }).profile_id;
+    profilesWithJunction.add(pid);
+    if (countByRole[rid] !== undefined) countByRole[rid] += 1;
+  }
+
+  const { data: legacyProfiles } = await ctx.supabase
+    .from("profiles")
+    .select("id, role_id")
+    .eq("organization_id", ctx.orgId)
+    .not("role_id", "is", null);
+
+  for (const p of legacyProfiles ?? []) {
+    const pid = (p as { id: string; role_id: string }).id;
+    const rid = (p as { id: string; role_id: string }).role_id;
+    if (!rid || countByRole[rid] === undefined) continue;
+    if (!profilesWithJunction.has(pid)) countByRole[rid] += 1;
+  }
 
   return {
     roles: roles.map((r) => ({

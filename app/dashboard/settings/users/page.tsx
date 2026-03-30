@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { UsersClient } from "@/components/settings/users-client";
-import { listUsers, listRolesForSelect } from "@/app/dashboard/settings/users/actions";
+import { listUsers, listRolesForSelect, listProvisioningPicklists } from "@/app/dashboard/settings/users/actions";
 import { requireOrgId } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 
@@ -23,10 +23,14 @@ export default async function UsersPage() {
     );
   }
 
-  const [usersResult, rolesResult] = await Promise.all([listUsers(), listRolesForSelect()]);
+  const [usersResult, rolesResult, pickResult] = await Promise.all([
+    listUsers(),
+    listRolesForSelect(),
+    listProvisioningPicklists(),
+  ]);
   const users = usersResult.users;
   const roles = rolesResult.roles;
-  const loadError = usersResult.error ?? rolesResult.error;
+  const loadError = usersResult.error ?? rolesResult.error ?? pickResult.error;
 
   return (
     <div>
@@ -42,7 +46,13 @@ export default async function UsersPage() {
           <p>{loadError}</p>
         </div>
       )}
-      <UsersClient initialUsers={users} initialRoles={roles} />
+      <UsersClient
+        initialUsers={users}
+        initialRoles={roles}
+        locations={pickResult.locations}
+        paymentAccounts={pickResult.paymentAccounts}
+        salesReps={pickResult.salesReps}
+      />
     </div>
   );
 }

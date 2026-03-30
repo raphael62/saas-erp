@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import TopNavbar, { type NavbarSubscription } from "@/components/dashboard/top-navbar";
+import { navbarSubscriptionFromOrg } from "@/lib/subscription-org";
 import Sidebar from "@/components/dashboard/sidebar";
 import { getNavForUser } from "@/lib/permissions";
 import { mainNavItems } from "@/lib/nav-items";
@@ -120,22 +121,33 @@ export default async function DashboardLayout({
         if (orgIdForHeader) {
           const orgSelect = await supabase
             .from("organizations")
-            .select("name, subscription_ends_at")
+            .select("name, subscription_ends_at, trial_ends_at, subscription_status")
             .eq("id", orgIdForHeader)
             .maybeSingle();
-          let orgRow = orgSelect.data as { name?: string; subscription_ends_at?: string | null } | null;
-          if (orgSelect.error?.message?.includes("subscription_ends_at")) {
+          let orgRow = orgSelect.data as {
+            name?: string;
+            subscription_ends_at?: string | null;
+            trial_ends_at?: string | null;
+            subscription_status?: string | null;
+          } | null;
+          if (
+            orgSelect.error?.message?.includes("trial_ends_at") ||
+            orgSelect.error?.message?.includes("subscription_status")
+          ) {
             const fallback = await supabase
               .from("organizations")
-              .select("name")
+              .select("name, subscription_ends_at")
               .eq("id", orgIdForHeader)
               .maybeSingle();
-            orgRow = fallback.data as { name?: string } | null;
+            orgRow = fallback.data as { name?: string; subscription_ends_at?: string | null } | null;
           } else if (orgSelect.error) {
             orgRow = null;
           }
           companyName = orgRow?.name ?? null;
-          subscription = navbarSubscriptionFromEndsAt(orgRow?.subscription_ends_at);
+          subscription = navbarSubscriptionFromOrg(orgRow);
+          if (subscription.kind === "none" && orgRow?.subscription_ends_at) {
+            subscription = navbarSubscriptionFromEndsAt(orgRow.subscription_ends_at);
+          }
         }
         let navItems: typeof mainNavItems;
         if (skipNavPermissions) {

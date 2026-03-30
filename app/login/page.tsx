@@ -113,6 +113,11 @@ function LoginForm() {
             />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
+          <p className="text-right text-sm">
+            <Link href="/auth/forgot-password" className="text-muted-foreground underline hover:text-foreground">
+              Forgot password?
+            </Link>
+          </p>
           <button
             type="submit"
             disabled={loading}

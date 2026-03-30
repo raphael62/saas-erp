@@ -30,10 +30,28 @@ const requiredSchema = {
     "code",
     "name",
     "subscription_ends_at",
+    "subscription_tier",
+    "trial_ends_at",
+    "subscription_status",
+    "stripe_customer_id",
+    "stripe_subscription_id",
     "inventory_history_anchor_date",
     "inventory_history_start_date",
   ],
-  profiles: ["id", "organization_id", "role", "theme_accent_hex"],
+  profiles: [
+    "id",
+    "organization_id",
+    "role",
+    "role_id",
+    "theme_accent_hex",
+    "user_code",
+    "phone",
+    "default_location_id",
+    "linked_sales_rep_id",
+  ],
+  profile_user_locations: ["profile_id", "location_id", "organization_id"],
+  profile_payment_accounts: ["profile_id", "payment_account_id", "organization_id"],
+  profile_roles: ["profile_id", "role_id", "organization_id"],
   products: [
     "id",
     "organization_id",
@@ -129,7 +147,7 @@ async function main() {
   if (failures.length > 0) {
     console.error("\nSchema preflight FAILED:\n");
     for (const failure of failures) console.error(`- ${failure}`);
-    console.error("\nRun migrations under supabase/migrations/ (e.g. 047_dev_schema_drift_guard.sql, 048_inventory_stock_snapshots.sql).");
+    console.error("\nRun migrations under supabase/migrations/ (e.g. 050_user_provisioning.sql).");
     process.exit(1);
   }
 

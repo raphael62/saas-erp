@@ -1,8 +1,10 @@
 /**
  * Runtime permission checks and nav filtering.
- * Uses role_permissions when role_id is set; falls back to legacy role for admin/super_admin.
+ * Uses role_permissions across all assigned roles (profile_roles + legacy profiles.role_id);
+ * falls back to legacy profiles.role for admin/super_admin.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { hasFullAccess } from "@/lib/roles";
 import { mainNavItems, type MainNavItemSerialized } from "@/lib/nav-items";
@@ -21,24 +23,53 @@ type RolePermission = {
   is_full: boolean;
 };
 
-async function getPermissionMap(
+function mergePermissionRow(into: RolePermission, row: RolePermission): RolePermission {
+  return {
+    module_key: into.module_key,
+    page_key: into.page_key,
+    is_full: into.is_full || row.is_full,
+    can_view: into.can_view || row.can_view,
+    can_create: into.can_create || row.can_create,
+    can_edit: into.can_edit || row.can_edit,
+    can_delete: into.can_delete || row.can_delete,
+    can_export: into.can_export || row.can_export,
+  };
+}
+
+function mergePermissionRows(rows: RolePermission[]): Map<string, RolePermission> {
+  const map = new Map<string, RolePermission>();
+  for (const r of rows) {
+    const key = `${r.module_key}:${r.page_key ?? ""}`;
+    const prev = map.get(key);
+    if (!prev) map.set(key, { ...r });
+    else map.set(key, mergePermissionRow(prev, r));
+  }
+  return map;
+}
+
+/** Role ids from profile_roles, or legacy profiles.role_id when junction is empty. */
+export async function getEffectiveRoleIds(
+  supabase: SupabaseClient,
   userId: string,
-  roleId: string | null,
-  orgId: string | null
-): Promise<Map<string, RolePermission>> {
-  if (!roleId || !orgId) return new Map();
+  legacyRoleId: string | null | undefined
+): Promise<string[]> {
+  const { data: prs } = await supabase.from("profile_roles").select("role_id").eq("profile_id", userId);
+  const fromJoin = [...new Set((prs ?? []).map((r: { role_id: string }) => r.role_id))];
+  if (fromJoin.length > 0) return fromJoin;
+  if (legacyRoleId) return [legacyRoleId];
+  return [];
+}
+
+async function getMergedPermissionMap(roleIds: string[], orgId: string | null): Promise<Map<string, RolePermission>> {
+  if (!orgId || roleIds.length === 0) return new Map();
   const supabase = await createClient();
   const { data: rows } = await supabase
     .from("role_permissions")
     .select("module_key, page_key, can_view, can_create, can_edit, can_delete, can_export, is_full")
-    .eq("role_id", roleId);
+    .in("role_id", roleIds);
 
-  const map = new Map<string, RolePermission>();
-  for (const r of rows ?? []) {
-    const key = `${r.module_key}:${r.page_key ?? ""}`;
-    map.set(key, r as RolePermission);
-  }
-  return map;
+  const list = (rows ?? []) as RolePermission[];
+  return mergePermissionRows(list);
 }
 
 function hasPermission(
@@ -66,7 +97,7 @@ function hasPermission(
 
 /**
  * Check if user can perform an action on a module/page.
- * Returns true for admin, super_admin, org owner, or legacy users with no role_id.
+ * Returns true for admin, super_admin, org owner, or legacy users with no RBAC roles.
  */
 export async function canAccess(
   userId: string,
@@ -82,7 +113,7 @@ export async function canAccess(
     .single();
 
   const role = (profile as { role?: string | null } | null)?.role ?? null;
-  const roleId = (profile as { role_id?: string | null } | null)?.role_id ?? null;
+  const legacyRoleId = (profile as { role_id?: string | null } | null)?.role_id ?? null;
   const orgId = (profile as { organization_id?: string | null } | null)?.organization_id ?? null;
 
   if (hasFullAccess(role)) return true;
@@ -94,9 +125,10 @@ export async function canAccess(
     .single();
   if ((org as { created_by?: string | null } | null)?.created_by === userId) return true;
 
-  if (!roleId) return true;
+  const roleIds = await getEffectiveRoleIds(supabase, userId, legacyRoleId);
+  if (roleIds.length === 0) return true;
 
-  const permMap = await getPermissionMap(userId, roleId, orgId);
+  const permMap = await getMergedPermissionMap(roleIds, orgId);
 
   const pageKeyNorm = pageKey ?? "";
   const perm = permMap.get(`${moduleKey}:${pageKeyNorm}`);
@@ -126,7 +158,7 @@ export async function canAccessRoute(
 type ProfileForNav = { role?: string | null; role_id?: string | null; organization_id?: string | null };
 
 /**
- * Filter nav items by user permissions. Uses role_permissions when role_id is set;
+ * Filter nav items by user permissions. Uses merged role_permissions for all assigned roles;
  * falls back to role-based filtering for legacy users.
  * Pass profile to avoid a duplicate fetch when the layout already has it.
  */
@@ -135,12 +167,12 @@ export async function getNavForUser(
   profile?: ProfileForNav | null
 ): Promise<MainNavItemSerialized[]> {
   let role: string | null;
-  let roleId: string | null;
+  let legacyRoleId: string | null;
   let orgId: string | null;
 
   if (profile) {
     role = profile.role ?? null;
-    roleId = profile.role_id ?? null;
+    legacyRoleId = profile.role_id ?? null;
     orgId = profile.organization_id ?? null;
   } else {
     const supabase = await createClient();
@@ -150,31 +182,23 @@ export async function getNavForUser(
       .eq("id", userId)
       .single();
     role = (p as ProfileForNav | null)?.role ?? null;
-    roleId = (p as ProfileForNav | null)?.role_id ?? null;
+    legacyRoleId = (p as ProfileForNav | null)?.role_id ?? null;
     orgId = (p as ProfileForNav | null)?.organization_id ?? null;
   }
 
   if (hasFullAccess(role)) return mainNavItems;
 
-  let orgData: { created_by?: string | null } | null = null;
-  try {
-    const supabase = await createClient();
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("created_by")
-      .eq("id", orgId ?? "")
-      .single();
-    orgData = org as { created_by?: string | null } | null;
-  } catch {
-    orgData = null;
-  }
+  const supabase = await createClient();
+  const { data: org } = await supabase.from("organizations").select("created_by").eq("id", orgId ?? "").single();
+  const orgData = org as { created_by?: string | null } | null;
   if (orgData?.created_by === userId) return mainNavItems;
 
-  if (!roleId) return mainNavItems;
+  const roleIds = await getEffectiveRoleIds(supabase, userId, legacyRoleId);
+  if (roleIds.length === 0) return mainNavItems;
 
   let permMap: Map<string, RolePermission>;
   try {
-    permMap = await getPermissionMap(userId, roleId, orgId);
+    permMap = await getMergedPermissionMap(roleIds, orgId);
   } catch {
     return mainNavItems;
   }
@@ -196,7 +220,8 @@ export async function getNavForUser(
     const node = permissionTree[i];
     const moduleKey = node?.moduleKey ?? item.href.replace(/^\/dashboard\/?/, "").split("/")[0] ?? "dashboard";
     const subItems = item.subItems.filter((sub) => {
-      const pageKey = sub.href === item.href || sub.href === item.href + "/" ? "overview" : sub.href.split("/").filter(Boolean).pop() ?? "overview";
+      const pageKey =
+        sub.href === item.href || sub.href === item.href + "/" ? "overview" : sub.href.split("/").filter(Boolean).pop() ?? "overview";
       if ((pageKey === "roles-permissions" || pageKey === "users") && !canManageRoles) return false;
       return hasView(moduleKey, pageKey);
     });

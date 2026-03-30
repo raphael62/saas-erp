@@ -22,7 +22,11 @@ export async function ensureDevOrg(userId: string): Promise<string | null> {
 
     if (!orgId) {
       try {
-        const { data: reg } = await admin.rpc("start_registration", { p_company_name: "Dev Org", p_phone: null });
+        const { data: reg } = await admin.rpc("start_registration", {
+          p_company_name: "Dev Org",
+          p_phone: null,
+          p_subscription_tier: null,
+        });
         orgId = (reg as { org_id?: string } | null)?.org_id ?? null;
       } catch {
         const code = String(100000 + Math.floor(Math.random() * 900000));
@@ -81,6 +85,7 @@ export async function getOrgIdForUser(userId: string, userEmail?: string | null)
         const { data: regData } = await admin.rpc("start_registration", {
           p_company_name: "Dev Org",
           p_phone: null,
+          p_subscription_tier: null,
         });
         firstOrgId = (regData as { org_id?: string } | null)?.org_id ?? null;
       }

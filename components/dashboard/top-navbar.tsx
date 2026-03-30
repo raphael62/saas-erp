@@ -22,7 +22,8 @@ import { createClient } from "@/lib/supabase/client";
 export type NavbarSubscription =
   | { kind: "none" }
   | { kind: "expired" }
-  | { kind: "active"; daysLeft: number };
+  | { kind: "active"; daysLeft: number }
+  | { kind: "trial"; daysLeft: number };
 
 interface TopNavbarProps {
   userEmail: string | undefined;
@@ -52,6 +53,20 @@ function SubscriptionPill({ subscription }: { subscription: NavbarSubscription }
       </span>
     );
   }
+  if (subscription.kind === "trial") {
+    const { daysLeft } = subscription;
+    return (
+      <span
+        className="shrink-0 rounded-full bg-sky-500/25 px-2 py-0.5 text-xs font-medium text-white ring-1 ring-sky-300/50"
+        title="Free trial — cancel anytime before it ends to avoid charges"
+      >
+        <span className="hidden sm:inline">
+          Trial: {daysLeft} day{daysLeft === 1 ? "" : "s"} left
+        </span>
+        <span className="sm:hidden">Trial {daysLeft}d</span>
+      </span>
+    );
+  }
   const { daysLeft } = subscription;
   const urgent = daysLeft <= 3;
   const soon = daysLeft <= 14 && !urgent;
@@ -63,7 +78,7 @@ function SubscriptionPill({ subscription }: { subscription: NavbarSubscription }
   return (
     <span
       className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1", tone)}
-      title="Days remaining in current subscription period"
+      title="Days remaining in current billing period (after trial)"
     >
       <span className="hidden sm:inline">
         {daysLeft} day{daysLeft === 1 ? "" : "s"} left

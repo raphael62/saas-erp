@@ -51,6 +51,7 @@ async function main() {
   const { data: regData, error: regErr } = await admin.rpc("start_registration", {
     p_company_name: COMPANY,
     p_phone: null,
+    p_subscription_tier: null,
   });
 
   if (regErr) {
