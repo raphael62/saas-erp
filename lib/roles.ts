@@ -18,7 +18,7 @@ export const ROLE_OPTIONS = [
 export type RoleValue = (typeof ROLE_OPTIONS)[number]["value"];
 
 /** Roles that bypass nav filtering and see all modules. */
-export const FULL_ACCESS_ROLES: RoleValue[] = ["platform_admin", "super_admin", "admin", "member"];
+export const FULL_ACCESS_ROLES: RoleValue[] = ["platform_admin", "super_admin", "admin"];
 
 export function hasFullAccess(role: string | null | undefined): boolean {
   const r = (role ?? "").toLowerCase();

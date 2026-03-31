@@ -126,7 +126,16 @@ export async function canAccess(
   if ((org as { created_by?: string | null } | null)?.created_by === userId) return true;
 
   const roleIds = await getEffectiveRoleIds(supabase, userId, legacyRoleId);
-  if (roleIds.length === 0) return true;
+  // If no RBAC roles are assigned, default to a minimal allowlist instead of granting full access.
+  // This keeps restrictions effective even when profile_roles hasn't been assigned yet.
+  if (roleIds.length === 0) {
+    if (action !== "view") return false;
+    const pk = pageKey ?? "overview";
+    const allow =
+      (moduleKey === "dashboard" && pk === "overview") ||
+      (moduleKey === "settings" && (pk === "overview" || pk === "organization"));
+    return allow;
+  }
 
   const permMap = await getMergedPermissionMap(roleIds, orgId);
 
@@ -194,7 +203,27 @@ export async function getNavForUser(
   if (orgData?.created_by === userId) return mainNavItems;
 
   const roleIds = await getEffectiveRoleIds(supabase, userId, legacyRoleId);
-  if (roleIds.length === 0) return mainNavItems;
+  if (roleIds.length === 0) {
+    // Minimal nav when RBAC roles aren't assigned yet.
+    return mainNavItems
+      .map((item) => {
+        const keep =
+          item.href === "/dashboard" ||
+          item.href === "/dashboard/settings";
+        if (!keep) return null;
+
+        const subItems = item.subItems.filter((sub) => {
+          const href = sub.href.replace(/\/$/, "");
+          return (
+            href === "/dashboard" ||
+            href === "/dashboard/settings" ||
+            href === "/dashboard/settings/organization"
+          );
+        });
+        return subItems.length > 0 ? { ...item, subItems } : null;
+      })
+      .filter(Boolean) as MainNavItemSerialized[];
+  }
 
   let permMap: Map<string, RolePermission>;
   try {
