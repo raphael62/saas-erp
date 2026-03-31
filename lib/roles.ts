@@ -21,6 +21,10 @@ export type RoleValue = (typeof ROLE_OPTIONS)[number]["value"];
 export const FULL_ACCESS_ROLES: RoleValue[] = ["platform_admin", "super_admin", "admin"];
 
 export function hasFullAccess(role: string | null | undefined): boolean {
-  const r = (role ?? "").toLowerCase();
+  const r = (role ?? "")
+    .toLowerCase()
+    // tolerate "Super Admin" / "super-admin" values stored in DB
+    .replace(/[\s-]+/g, "_")
+    .trim();
   return FULL_ACCESS_ROLES.includes(r as RoleValue);
 }
