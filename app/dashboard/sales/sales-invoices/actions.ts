@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { reassignInventoryDeltaFromDefaultLocation } from "@/lib/inventory-location-balances";
 
 type InvoiceLineInput = {
   row_no: number;
@@ -154,7 +155,8 @@ function subtractMaps(a: Map<string, number>, b: Map<string, number>) {
 async function applyStockDelta(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orgId: string,
-  qtyOutDeltaByProduct: Map<string, number>
+  qtyOutDeltaByProduct: Map<string, number>,
+  stockLocationId?: string | null
 ) {
   for (const [productId, deltaQtyOut] of qtyOutDeltaByProduct.entries()) {
     if (!deltaQtyOut) continue;
@@ -175,6 +177,18 @@ async function applyStockDelta(
       .eq("organization_id", orgId)
       .eq("id", productId);
     if (stockError) return { error: stockError.message };
+
+    if (stockLocationId) {
+      const stockQuantityDelta = nextStock - currentStock;
+      const loc = await reassignInventoryDeltaFromDefaultLocation(
+        supabase,
+        orgId,
+        productId,
+        stockQuantityDelta,
+        stockLocationId
+      );
+      if (loc.error) return { error: loc.error };
+    }
   }
   return { ok: true };
 }
@@ -390,7 +404,7 @@ export async function saveSalesInvoice(formData: FormData) {
   const prevStock = aggregateProductQty(previousLines);
   const nextStock = aggregateProductQty(lines);
   const stockDelta = subtractMaps(nextStock, prevStock);
-  const stockResult = await applyStockDelta(supabase, orgId, stockDelta);
+  const stockResult = await applyStockDelta(supabase, orgId, stockDelta, locationId);
   if ("error" in stockResult && stockResult.error) return { error: stockResult.error };
 
   const prevPromo = aggregatePromoConsumed(previousLines);
@@ -415,11 +429,14 @@ export async function deleteSalesInvoice(id: string) {
 
   const { data: existing } = await supabase
     .from("sales_invoices")
-    .select("id")
+    .select("id, location_id")
     .eq("organization_id", orgId)
     .eq("id", invoiceId)
     .single();
   if (!existing) return { error: "Invoice not found." };
+  const stockLocationId = (existing as { location_id?: string | null }).location_id
+    ? String((existing as { location_id?: string | null }).location_id)
+    : null;
 
   const previousLinesRes = await supabase
     .from("sales_invoice_lines")
@@ -446,7 +463,7 @@ export async function deleteSalesInvoice(id: string) {
   const prevStock = aggregateProductQty(previousLines);
   const reverseStockDelta = new Map<string, number>();
   for (const [productId, qtyOut] of prevStock.entries()) reverseStockDelta.set(productId, clamp2(-qtyOut));
-  const stockResult = await applyStockDelta(supabase, orgId, reverseStockDelta);
+  const stockResult = await applyStockDelta(supabase, orgId, reverseStockDelta, stockLocationId);
   if ("error" in stockResult && stockResult.error) return { error: stockResult.error };
 
   const prevPromo = aggregatePromoConsumed(previousLines);

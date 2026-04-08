@@ -94,6 +94,7 @@ export default async function PurchaseInvoicesPage({
   return (
     <div>
       <PurchaseInvoiceList
+        organizationId={orgId}
         invoices={invoices as unknown as Parameters<typeof PurchaseInvoiceList>[0]["invoices"]}
         lines={lines as Parameters<typeof PurchaseInvoiceList>[0]["lines"]}
         products={products as Parameters<typeof PurchaseInvoiceList>[0]["products"]}

@@ -1,62 +1,119 @@
-import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { Card, CardContent } from "@/components/ui/card";
+import { createClient } from "@/lib/supabase/server";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import { StockByLocationView } from "@/components/inventory/stock-by-location-view";
 
-export default async function StocksByLocationPage() {
+export const dynamic = "force-dynamic";
+
+function uniqSorted(values: (string | null | undefined)[]): string[] {
+  return [...new Set(values.map((v) => String(v ?? "").trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" })
+  );
+}
+
+export default async function StockByLocationPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const { orgId } = await getProfileWithOrg(user.id, user.email ?? undefined);
   if (!orgId) return <NoOrgPrompt />;
 
-  const { data: products } = await supabase
-    .from("products")
-    .select("id, name, sku, category, unit, stock_quantity")
-    .eq("organization_id", orgId)
-    .order("name");
+  const generatedAtIso = new Date().toISOString();
+
+  const [productsRes, locationsRes, balancesRes] = await Promise.all([
+    supabase
+      .from("products")
+      .select(
+        "id, code, name, category, pack_unit, min_stock, reorder_qty, cost_price, empties_type, is_active"
+      )
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .order("code"),
+    supabase
+      .from("locations")
+      .select("id, code, name, is_active")
+      .eq("organization_id", orgId)
+      .eq("is_active", true)
+      .order("code"),
+    supabase
+      .from("inventory_location_balances")
+      .select("product_id, location_id, quantity")
+      .eq("organization_id", orgId),
+  ]);
+
+  const productRows = (productsRes.data ?? []) as Array<{
+    id: string;
+    code: string | null;
+    name: string;
+    category: string | null;
+    pack_unit: number | null;
+    min_stock: number | null;
+    reorder_qty: number | null;
+    cost_price: number | null;
+    empties_type: string | null;
+  }>;
+
+  const products = productRows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    category: r.category,
+    pack_unit: r.pack_unit,
+    min_stock: Number(r.min_stock ?? 0),
+    reorder_qty: Number(r.reorder_qty ?? 0),
+    cost_price: Number(r.cost_price ?? 0),
+    empties_type: r.empties_type,
+  }));
+
+  const productsForPicklist = productRows.map((r) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    is_active: true,
+  }));
+
+  const categoryOptions = uniqSorted(productRows.map((r) => r.category));
+  const emptiesTypeOptions = uniqSorted(productRows.map((r) => r.empties_type));
+
+  const locations = (locationsRes.data ?? []) as Array<{
+    id: string;
+    code: string;
+    name: string;
+    is_active?: boolean | null;
+  }>;
+
+  const balancesTableMissing = Boolean(
+    balancesRes.error &&
+      (balancesRes.error.message.toLowerCase().includes("does not exist") ||
+        balancesRes.error.message.toLowerCase().includes("schema cache"))
+  );
+
+  const balances = balancesTableMissing
+    ? []
+    : ((balancesRes.data ?? []) as Array<{
+        product_id: string;
+        location_id: string;
+        quantity: number | string | null;
+      }>).map((b) => ({
+        product_id: String(b.product_id),
+        location_id: String(b.location_id),
+        quantity: Number(b.quantity ?? 0),
+      }));
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold">Stocks by location</h1>
-        <p className="text-sm text-muted-foreground">Product stock levels (default location)</p>
-      </div>
-
-      <Card>
-        <CardContent className="p-0">
-          {(products ?? []).length === 0 ? (
-            <p className="p-6 text-center text-muted-foreground">No products yet. Add products first.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/50">
-                    <th className="px-4 py-3 text-left font-medium">Product</th>
-                    <th className="px-4 py-3 text-left font-medium">SKU</th>
-                    <th className="px-4 py-3 text-left font-medium">Category</th>
-                    <th className="px-4 py-3 text-left font-medium">Unit</th>
-                    <th className="px-4 py-3 text-right font-medium">Stock</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(products ?? []).map((p: { id: string; name: string; sku: string | null; category: string | null; unit: string; stock_quantity: number }) => (
-                    <tr key={p.id} className="border-b border-border hover:bg-muted/30">
-                      <td className="px-4 py-3">{p.name}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{p.sku ?? "—"}</td>
-                      <td className="px-4 py-3">{p.category ?? "—"}</td>
-                      <td className="px-4 py-3">{p.unit}</td>
-                      <td className="px-4 py-3 text-right font-medium">{Number(p.stock_quantity)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+    <StockByLocationView
+      products={products}
+      locations={locations}
+      balances={balances}
+      productsForPicklist={productsForPicklist}
+      categoryOptions={categoryOptions}
+      emptiesTypeOptions={emptiesTypeOptions}
+      generatedAtIso={generatedAtIso}
+      balancesTableMissing={balancesTableMissing}
+    />
   );
 }

@@ -97,6 +97,7 @@ function formatMoney(n: number | null | undefined) {
 }
 
 type PurchaseInvoiceListProps = {
+  organizationId: string;
   invoices: Invoice[];
   lines: InvoiceLine[];
   products: Product[];
@@ -108,6 +109,7 @@ type PurchaseInvoiceListProps = {
 };
 
 function PurchaseInvoiceListContent({
+  organizationId,
   invoices = [],
   lines = [],
   products = [],
@@ -463,6 +465,7 @@ function PurchaseInvoiceListContent({
       </div>
 
       <PurchaseInvoiceFormDialog
+        organizationId={organizationId}
         open={showForm}
         onOpenChange={(next) => {
           setShowForm(next);

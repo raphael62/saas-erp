@@ -128,9 +128,10 @@ export const mainNavItems: MainNavItemSerialized[] = [
     subItems: [
       { href: "/dashboard/inventory", label: "Overview", iconKey: "LayoutDashboard" },
       { href: "/dashboard/inventory/products", label: "Products", iconKey: "Package" },
-      { href: "/dashboard/inventory/stocks-by-location", label: "Stocks by location", iconKey: "MapPin" },
+      { href: "/dashboard/inventory/stocks-by-location", label: "Stock by Location", iconKey: "MapPin" },
       { href: "/dashboard/inventory/change-history", label: "Change history", iconKey: "History" },
       { href: "/dashboard/inventory/location-transfers", label: "Location Transfers", iconKey: "ArrowLeftRight" },
+      { href: "/dashboard/inventory/stock-count-sheets", label: "Stock Count Sheets", iconKey: "ClipboardList" },
     ],
   },
   {

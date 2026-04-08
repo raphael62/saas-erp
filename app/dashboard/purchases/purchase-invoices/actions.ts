@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { reassignInventoryDeltaFromDefaultLocation } from "@/lib/inventory-location-balances";
 
 type PurchaseLineInput = {
   row_no: number;
@@ -129,7 +130,8 @@ function subtractMaps(a: Map<string, number>, b: Map<string, number>) {
 async function applyStockDelta(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orgId: string,
-  qtyInDeltaByProduct: Map<string, number>
+  qtyInDeltaByProduct: Map<string, number>,
+  stockLocationId?: string | null
 ) {
   for (const [productId, deltaQty] of qtyInDeltaByProduct.entries()) {
     if (!deltaQty) continue;
@@ -149,6 +151,17 @@ async function applyStockDelta(
       .eq("organization_id", orgId)
       .eq("id", productId);
     if (stockError) return { error: stockError.message };
+
+    if (stockLocationId) {
+      const loc = await reassignInventoryDeltaFromDefaultLocation(
+        supabase,
+        orgId,
+        productId,
+        deltaQty,
+        stockLocationId
+      );
+      if (loc.error) return { error: loc.error };
+    }
   }
   return { ok: true };
 }
@@ -340,7 +353,7 @@ export async function savePurchaseInvoice(formData: FormData) {
   const prevStock = aggregateProductQty(previousLines);
   const nextStock = aggregateProductQty(lines);
   const stockDelta = subtractMaps(nextStock, prevStock);
-  const stockResult = await applyStockDelta(supabase, orgId, stockDelta);
+  const stockResult = await applyStockDelta(supabase, orgId, stockDelta, locationId);
   if ("error" in stockResult && stockResult.error) return { error: stockResult.error };
 
   revalidatePath("/dashboard/purchases/purchase-invoices");
@@ -358,11 +371,14 @@ export async function deletePurchaseInvoice(id: string) {
 
   const { data: existing } = await supabase
     .from("purchase_invoices")
-    .select("id")
+    .select("id, location_id")
     .eq("organization_id", orgId)
     .eq("id", invoiceId)
     .single();
   if (!existing) return { error: "Invoice not found." };
+  const stockLocationId = (existing as { location_id?: string | null }).location_id
+    ? String((existing as { location_id?: string | null }).location_id)
+    : null;
 
   const previousLinesRes = await supabase
     .from("purchase_invoice_lines")
@@ -389,7 +405,7 @@ export async function deletePurchaseInvoice(id: string) {
   const prevStock = aggregateProductQty(previousLines);
   const reverseStockDelta = new Map<string, number>();
   for (const [productId, qty] of prevStock.entries()) reverseStockDelta.set(productId, clamp4(-qty));
-  const stockResult = await applyStockDelta(supabase, orgId, reverseStockDelta);
+  const stockResult = await applyStockDelta(supabase, orgId, reverseStockDelta, stockLocationId);
   if ("error" in stockResult && stockResult.error) return { error: stockResult.error };
 
   revalidatePath("/dashboard/purchases/purchase-invoices");

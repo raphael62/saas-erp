@@ -1,13 +1,16 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { clamp2, dayBefore, productIdKey, purchaseLineCtn } from "@/lib/inventory-stock-snapshots";
+import { ITEM_CATEGORY_PRESET_LABELS } from "@/lib/inventory-change-history-presets";
+import { clamp2, dayBefore, productIdForDb, productIdKey, purchaseLineCtn } from "@/lib/inventory-stock-snapshots";
 
 export type ChangeHistoryRow = {
   productId: string;
   itemCode: string;
   itemName: string;
   packUnit: number;
+  /** Closing quantity × pack unit (bottles) when pack unit is set; else 0 */
+  btlQty: number;
   opening: number;
   purchases: number;
   sales: number;
@@ -30,8 +33,24 @@ type ProductRow = {
 type ChangeHistoryQueryOptions = {
   includeInactive?: boolean;
   excludeNoTransactions?: boolean;
+  /** Free-text item search (code/name) when itemIds not set */
   itemContains?: string | null;
+  /** Restrict to these product ids (multi-select) */
+  itemIds?: string[] | null;
+  /** @deprecated use brandTerms; kept for URL compat */
   categoryContains?: string | null;
+  /** Item category presets from filter checkboxes (e.g. raw_material, finished_goods) */
+  itemCategoryPresets?: string[] | null;
+  /** Brand / category values — product must match at least one (OR) */
+  brandTerms?: string[] | null;
+  /** @deprecated use brandTerms */
+  brandContains?: string | null;
+  /** Empties type values — product must match at least one (OR) */
+  emptiesTerms?: string[] | null;
+  /** @deprecated use emptiesTerms */
+  emptiesTypeContains?: string | null;
+  /** Stored for future location-scoped history; does not filter products yet */
+  locationIds?: string[] | null;
 };
 
 type MovementTotals = {
@@ -51,6 +70,13 @@ function defaultRange(): { from: string; to: string } {
 
 function escapeIlike(q: string) {
   return q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+/** Legacy single-string filters that used comma separation */
+function splitLegacyTerms(s: string | null | undefined): string[] {
+  const t = String(s ?? "").trim();
+  if (!t) return [];
+  return t.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
 function chunk<T>(arr: T[], size: number): T[][] {
@@ -299,19 +325,71 @@ export async function getInventoryChangeHistory(
 
   if (!options?.includeInactive) prodQuery = prodQuery.neq("is_active", false);
 
-  const itemQ = (options?.itemContains ?? "").replace(/,/g, " ").trim();
-  if (itemQ) {
-    const e = escapeIlike(itemQ);
-    prodQuery = prodQuery.or(`code.ilike.%${e}%,name.ilike.%${e}%`);
+  const itemIdsOpt = (options?.itemIds ?? []).map((x) => productIdKey(x)).filter(Boolean);
+  if (itemIdsOpt.length > 0 && itemIdsOpt.length <= 100) {
+    prodQuery = prodQuery.in(
+      "id",
+      itemIdsOpt.map((id) => productIdForDb(id))
+    );
   }
-
-  const catQ = (options?.categoryContains ?? "").trim();
-  if (catQ) prodQuery = prodQuery.ilike("category", `%${escapeIlike(catQ)}%`);
 
   const { data: products, error: prodErr } = await prodQuery.order("code", { ascending: true, nullsFirst: false });
   if (prodErr) return { rows: [], from, to, error: prodErr.message };
 
-  const plist = (products ?? []) as ProductRow[];
+  let plist = (products ?? []) as ProductRow[];
+  if (itemIdsOpt.length > 100) {
+    const idSet = new Set(itemIdsOpt);
+    plist = plist.filter((p) => idSet.has(productIdKey(p.id)));
+  }
+
+  const itemQ = (options?.itemContains ?? "").replace(/,/g, " ").trim();
+  if (itemQ && itemIdsOpt.length === 0) {
+    const q = itemQ.toLowerCase();
+    plist = plist.filter(
+      (p) =>
+        (p.code ?? "").toLowerCase().includes(q) ||
+        (p.name ?? "").toLowerCase().includes(q) ||
+        productIdKey(p.id).toLowerCase().includes(q)
+    );
+  }
+
+  const presets = (options?.itemCategoryPresets ?? []).map((p) => String(p).trim()).filter(Boolean);
+  if (presets.length > 0) {
+    plist = plist.filter((p) => {
+      const cat = (p.category ?? "").toLowerCase();
+      return presets.some((key) => {
+        const label = ITEM_CATEGORY_PRESET_LABELS[key] ?? key;
+        if (!label) return false;
+        return cat.includes(label.toLowerCase());
+      });
+    });
+  }
+
+  const brandTerms = [
+    ...(options?.brandTerms ?? []),
+    ...splitLegacyTerms(options?.brandContains),
+    ...splitLegacyTerms(options?.categoryContains),
+  ]
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+  const brandTermsDedup = [...new Set(brandTerms)];
+  if (brandTermsDedup.length > 0) {
+    plist = plist.filter((p) => {
+      const cat = (p.category ?? "").toLowerCase();
+      return brandTermsDedup.some((t) => cat.includes(t.toLowerCase()));
+    });
+  }
+
+  const emptiesTerms = [...(options?.emptiesTerms ?? []), ...splitLegacyTerms(options?.emptiesTypeContains)]
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+  const emptiesDedup = [...new Set(emptiesTerms)];
+  if (emptiesDedup.length > 0) {
+    plist = plist.filter((p) => {
+      const et = (p.empties_type ?? "").toLowerCase();
+      return emptiesDedup.some((t) => et.includes(t.toLowerCase()));
+    });
+  }
   const productsById = new Map<string, ProductRow>();
   const packUnitByProduct = new Map<string, number>();
   for (const p of plist) {
@@ -339,12 +417,15 @@ export async function getInventoryChangeHistory(
     const closing = clamp2(opening + purchases - sales);
     const orderQty = clamp2(sales - closing);
     const price = pricesByProduct.get(pid) ?? { cost: 0, retail: 0 };
+    const packU = clamp2(Number(p.pack_unit ?? 0));
+    const btlQty = clamp2(packU > 0 ? Math.round(closing * packU) : 0);
 
     return {
       productId: pid,
       itemCode: (p.code ?? p.name ?? "").trim() || "--",
       itemName: p.name,
-      packUnit: clamp2(Number(p.pack_unit ?? 0)),
+      packUnit: packU,
+      btlQty,
       opening,
       purchases,
       sales,

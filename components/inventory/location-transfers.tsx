@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import {
@@ -10,18 +10,16 @@ import {
   saveLocationTransfer,
   type SaveLocationTransferInput,
 } from "@/app/dashboard/inventory/location-transfers/actions";
+import {
+  TransferStyleLineItemsTable,
+  type TransferStyleLine,
+} from "@/components/inventory/transfer-style-line-items";
 
 type Location = { id: string; code?: string | null; name: string };
 type Product = { id: string; code?: string | null; name: string; stock_quantity?: number | null; unit?: string | null; pack_unit?: number | null };
-type TransferLine = {
+type TransferLine = TransferStyleLine & {
   id?: string;
   location_transfer_id?: string;
-  product_id: string;
-  cartons: number;
-  bottles: number;
-  ctn_qty: number;
-  notes?: string | null;
-  row_no: number;
   product?: { id: string; code?: string | null; name: string; pack_unit?: number | null } | null;
 };
 
@@ -260,34 +258,9 @@ function LocationTransferFormDialog({
   const [fromLocationId, setFromLocationId] = useState("");
   const [toLocationId, setToLocationId] = useState("");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<TransferLine[]>([{ product_id: "", cartons: 0, bottles: 0, ctn_qty: 0, notes: "", row_no: 1 }]);
-
-  function recalcCtnQty(line: TransferLine) {
-    const product = products.find((p) => p.id === line.product_id);
-    const packUnit = Number(product?.pack_unit ?? 0);
-    const ctnQty = packUnit > 0 ? Number((line.cartons + line.bottles / packUnit).toFixed(4)) : Number(line.cartons.toFixed(4));
-    return { ...line, ctn_qty: ctnQty };
-  }
-
-  function updateLine(idx: number, patch: Partial<TransferLine>) {
-    setLines((prev) =>
-      prev.map((l, i) => {
-        if (i !== idx) return l;
-        return recalcCtnQty({ ...l, ...patch });
-      })
-    );
-  }
-
-  function addRow() {
-    setLines((prev) => [...prev, { product_id: "", cartons: 0, bottles: 0, ctn_qty: 0, notes: "", row_no: prev.length + 1 }]);
-  }
-
-  function removeRow(idx: number) {
-    setLines((prev) => {
-      const out = prev.filter((_, i) => i !== idx);
-      return out.length === 0 ? [{ product_id: "", cartons: 0, bottles: 0, ctn_qty: 0, notes: "", row_no: 1 }] : out.map((l, i) => ({ ...l, row_no: i + 1 }));
-    });
-  }
+  const [lines, setLines] = useState<TransferLine[]>([
+    { product_id: "", cartons: null, bottles: null, ctn_qty: 0, notes: "", row_no: 1 },
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -300,15 +273,21 @@ function LocationTransferFormDialog({
     setToLocationId(String(initialTransfer?.to_location_id ?? ""));
     setNotes(String(initialTransfer?.notes ?? ""));
     setTransferNo(String(initialTransfer?.transfer_no ?? ""));
-    const seeded = (initialTransfer?.lines ?? []).map((l, i) => ({
-      product_id: String(l.product_id ?? ""),
-      cartons: Number(l.cartons ?? 0),
-      bottles: Number(l.bottles ?? 0),
-      ctn_qty: Number(l.ctn_qty ?? 0),
-      notes: String(l.notes ?? ""),
-      row_no: i + 1,
-    }));
-    setLines(seeded.length ? seeded : [{ product_id: "", cartons: 0, bottles: 0, ctn_qty: 0, notes: "", row_no: 1 }]);
+    const seeded = (initialTransfer?.lines ?? []).map((l, i) => {
+      const c = Number(l.cartons ?? 0);
+      const b = Number(l.bottles ?? 0);
+      return {
+        product_id: String(l.product_id ?? ""),
+        cartons: c === 0 ? null : c,
+        bottles: b === 0 ? null : b,
+        ctn_qty: Number(l.ctn_qty ?? 0),
+        notes: String(l.notes ?? ""),
+        row_no: i + 1,
+      };
+    });
+    setLines(
+      seeded.length ? seeded : [{ product_id: "", cartons: null, bottles: null, ctn_qty: 0, notes: "", row_no: 1 }]
+    );
   }, [open, initialTransfer]);
 
   useEffect(() => {
@@ -399,90 +378,7 @@ function LocationTransferFormDialog({
           </div>
         </div>
 
-        <div className="rounded border border-border">
-          <div className="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-2">
-            <p className="text-sm font-medium">Items</p>
-            <button type="button" className="text-xs font-medium text-[var(--navbar)] hover:underline" onClick={addRow}>
-              + Add Row
-            </button>
-          </div>
-          <div className="overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/20 text-xs text-muted-foreground">
-                  <th className="px-2 py-2 text-left">Product</th>
-                  <th className="px-2 py-2 text-right">Cartons</th>
-                  <th className="px-2 py-2 text-right">Bottles</th>
-                  <th className="px-2 py-2 text-right">Ctn Qty</th>
-                  <th className="px-2 py-2 text-left">Notes</th>
-                  <th className="px-2 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line, idx) => (
-                  <tr key={`${idx}-${line.row_no}`} className="border-b border-border last:border-0">
-                    <td className="px-2 py-1.5">
-                      <select
-                        value={line.product_id}
-                        onChange={(e) => updateLine(idx, { product_id: e.target.value })}
-                        className="h-8 w-full rounded border border-input bg-background px-2 text-sm"
-                      >
-                        <option value="">Select product</option>
-                        {products.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {productLabel(p)}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.cartons}
-                        onChange={(e) => updateLine(idx, { cartons: Number(e.target.value || 0) })}
-                        className="h-8 w-24 rounded border border-input bg-background px-2 text-right text-sm"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.bottles}
-                        onChange={(e) => updateLine(idx, { bottles: Number(e.target.value || 0) })}
-                        className="h-8 w-24 rounded border border-input bg-background px-2 text-right text-sm"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="number"
-                        value={line.ctn_qty}
-                        readOnly
-                        className="h-8 w-28 rounded border border-input bg-muted/50 px-2 text-right text-sm"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <input
-                        type="text"
-                        value={String(line.notes ?? "")}
-                        onChange={(e) => updateLine(idx, { notes: e.target.value })}
-                        className="h-8 w-full rounded border border-input bg-background px-2 text-sm"
-                        placeholder="—"
-                      />
-                    </td>
-                    <td className="px-2 py-1.5 text-right">
-                      <button type="button" onClick={() => removeRow(idx)} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-destructive">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <TransferStyleLineItemsTable products={products} lines={lines} onLinesChange={setLines} />
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Package, MapPin, History, ArrowLeftRight, AlertTriangle } from "lucide-react";
+import { Package, MapPin, History, ArrowLeftRight, ClipboardList, AlertTriangle } from "lucide-react";
 import { requireOrgId } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 
@@ -24,9 +24,10 @@ export default async function InventoryOverviewPage() {
 
   const links = [
     { href: "/dashboard/inventory/products", label: "Products", icon: Package, stat: totalProducts },
-    { href: "/dashboard/inventory/stocks-by-location", label: "Stocks by location", icon: MapPin, stat: "—" },
+    { href: "/dashboard/inventory/stocks-by-location", label: "Stock by Location", icon: MapPin, stat: "—" },
     { href: "/dashboard/inventory/change-history", label: "Change history", icon: History, stat: "—" },
     { href: "/dashboard/inventory/location-transfers", label: "Location Transfers", icon: ArrowLeftRight, stat: "—" },
+    { href: "/dashboard/inventory/stock-count-sheets", label: "Stock Count Sheets", icon: ClipboardList, stat: "—" },
   ];
 
   return (
@@ -52,7 +53,7 @@ export default async function InventoryOverviewPage() {
         </Card>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {links.map((item) => (
           <Link key={item.href} href={item.href}>
             <Card className="h-full transition-colors hover:bg-muted/50">

@@ -154,6 +154,7 @@ export default async function SalesInvoicesPage({
 
   return (
     <SalesInvoiceList
+      organizationId={orgId}
       invoices={invoices as unknown as Parameters<typeof SalesInvoiceList>[0]["invoices"]}
       lines={lines as Parameters<typeof SalesInvoiceList>[0]["lines"]}
       products={products as Parameters<typeof SalesInvoiceList>[0]["products"]}

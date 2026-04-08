@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, HelpCircle, Search, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { ProductTemplateMenu } from "@/components/inventory/product-template-menu";
@@ -30,6 +30,19 @@ type ChangeHistoryViewProps = {
   excludeNoTransactions: boolean;
   itemQ: string;
   categoryQ: string;
+  brandQ: string;
+  emptiesQ: string;
+  itemCatKeys: string[];
+  individualLocation: boolean;
+  locationIds: string[];
+  itemIds: string[];
+  brandTerms: string[];
+  emptiesTerms: string[];
+  organizationName: string | null;
+  locations: Array<{ id: string; code: string; name: string; is_active?: boolean | null }>;
+  productsForPicklist: Array<{ id: string; code: string | null; name: string; is_active?: boolean }>;
+  categoryOptions: string[];
+  emptiesTypeOptions: string[];
 };
 
 const THEAD_STICKY_BG = "color-mix(in oklch, var(--navbar) 15%, white)";
@@ -48,6 +61,7 @@ type NumericTotalKey =
   | "sales"
   | "closing"
   | "orderQty"
+  | "btlQty"
   | "costValue"
   | "saleValue";
 
@@ -61,6 +75,7 @@ const TEMPLATE_COLUMN_LABELS: Record<string, string> = {
   sales: "Sales",
   closing: "Closing",
   orderQty: "Order",
+  btlQty: "Btl Qty",
   costValue: "Cost Value",
   saleValue: "Sale value",
 };
@@ -76,14 +91,15 @@ const CHANGE_HISTORY_COLUMNS: Array<{
   { key: "productId", label: "Product ID", defaultVisible: false, defaultWidth: 200 },
   { key: "itemCode", label: "Item Code", sortable: true, defaultVisible: true, defaultWidth: 120 },
   { key: "itemName", label: "Item name", sortable: true, defaultVisible: true, defaultWidth: 200 },
-  { key: "packUnit", label: "Pack Unit", sortable: true, defaultVisible: true, defaultWidth: 110, numeric: true },
-  { key: "opening", label: "Opening", sortable: true, defaultVisible: true, defaultWidth: 100, numeric: true },
-  { key: "purchases", label: "Purchases", sortable: true, defaultVisible: true, defaultWidth: 100, numeric: true },
-  { key: "sales", label: "Sales", sortable: true, defaultVisible: true, defaultWidth: 100, numeric: true },
+  { key: "packUnit", label: "Pack Unit", sortable: true, defaultVisible: false, defaultWidth: 110, numeric: true },
+  { key: "opening", label: "Opening", sortable: true, defaultVisible: false, defaultWidth: 100, numeric: true },
+  { key: "purchases", label: "Purchases", sortable: true, defaultVisible: false, defaultWidth: 100, numeric: true },
+  { key: "sales", label: "Sales", sortable: true, defaultVisible: false, defaultWidth: 100, numeric: true },
   { key: "closing", label: "Closing", sortable: true, defaultVisible: true, defaultWidth: 100, numeric: true },
   { key: "orderQty", label: "Order", sortable: true, defaultVisible: true, defaultWidth: 100, numeric: true },
+  { key: "btlQty", label: "Btl Qty", sortable: true, defaultVisible: true, defaultWidth: 90, numeric: true },
   { key: "costValue", label: "Cost Value", sortable: true, defaultVisible: true, defaultWidth: 120, numeric: true },
-  { key: "saleValue", label: "Sale value", sortable: true, defaultVisible: true, defaultWidth: 120, numeric: true },
+  { key: "saleValue", label: "Sale Value", sortable: true, defaultVisible: true, defaultWidth: 120, numeric: true },
 ];
 
 function defaultTemplateColumns(): TemplateColumnSetting[] {
@@ -98,6 +114,14 @@ function defaultTemplateColumns(): TemplateColumnSetting[] {
 }
 
 function fmt(n: number) {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function fmt4(n: number) {
+  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+}
+
+function fmt2(n: number) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
@@ -138,6 +162,20 @@ function compareRows(a: ChangeHistoryRow, b: ChangeHistoryRow, col: SortableChan
   return cmp * mul;
 }
 
+function mergeTemplateColumnsWithDefaults(cols: TemplateColumnSetting[]): TemplateColumnSetting[] {
+  const defaults = defaultTemplateColumns();
+  const byKey = new Map(cols.map((c) => [c.column_key, c]));
+  const merged: TemplateColumnSetting[] = [...cols];
+  let maxOrder = merged.reduce((m, c) => Math.max(m, c.display_order ?? 0), 0);
+  for (const d of defaults) {
+    if (!byKey.has(d.column_key)) {
+      maxOrder += 1;
+      merged.push({ ...d, display_order: maxOrder });
+    }
+  }
+  return merged.sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+}
+
 export function ChangeHistoryView({
   rows,
   from,
@@ -147,6 +185,19 @@ export function ChangeHistoryView({
   excludeNoTransactions,
   itemQ,
   categoryQ,
+  brandQ,
+  emptiesQ,
+  itemCatKeys,
+  individualLocation,
+  locationIds,
+  itemIds,
+  brandTerms,
+  emptiesTerms,
+  organizationName,
+  locations,
+  productsForPicklist,
+  categoryOptions,
+  emptiesTypeOptions,
 }: ChangeHistoryViewProps) {
   const [search, setSearch] = useState("");
   const [showFilterDialog, setShowFilterDialog] = useState(false);
@@ -210,6 +261,7 @@ export function ChangeHistoryView({
       "sales",
       "closing",
       "orderQty",
+      "btlQty",
       "costValue",
       "saleValue",
     ];
@@ -264,12 +316,13 @@ export function ChangeHistoryView({
     if (!result.data) return;
     setSelectedTemplateId(templateId);
     setActiveTemplateMeta(result.data.template as TemplateMeta);
-    const cols = (result.data.columns as TemplateColumnSetting[])?.length
+    const rawCols = (result.data.columns as TemplateColumnSetting[])?.length
       ? (result.data.columns as TemplateColumnSetting[])
       : defaultTemplateColumns();
-    setTemplateColumns(cols);
+    const mergedCols = mergeTemplateColumnsWithDefaults(rawCols);
+    setTemplateColumns(mergedCols);
 
-    const sorted = [...cols]
+    const sorted = [...mergedCols]
       .filter((c) => c.sort_direction && c.sort_order !== null)
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
     const topSort = sorted[0];
@@ -298,12 +351,50 @@ export function ChangeHistoryView({
 
   function formatCell(r: ChangeHistoryRow, key: ChangeHistoryColumnKey) {
     const colDef = CHANGE_HISTORY_COLUMNS.find((c) => c.key === key);
+    if (key === "closing") {
+      return <span className={`${FIGURE_CELL_CLASS} text-blue-600`}>{fmt4(r.closing)}</span>;
+    }
+    if (key === "orderQty") {
+      const v = r.orderQty;
+      return (
+        <span className={`${FIGURE_CELL_CLASS} ${v < 0 ? "text-red-600" : ""}`}>{fmt2(v)}</span>
+      );
+    }
+    if (key === "btlQty") {
+      return <span className={FIGURE_CELL_CLASS}>{Math.round(r.btlQty).toLocaleString()}</span>;
+    }
     const v = r[key];
     if (typeof v === "number") {
       const text = fmt(v);
       return colDef?.numeric ? <span className={FIGURE_CELL_CLASS}>{text}</span> : text;
     }
     return v ?? "—";
+  }
+
+  function downloadExcelCsv() {
+    const csvCell = (val: string | number) => {
+      if (typeof val === "number") return String(val);
+      const s = String(val ?? "");
+      if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    const cols = visibleDataColumns;
+    const header = ["#", ...cols.map((c) => csvCell(c.label))];
+    const lines = filtered.map((r, i) => {
+      const cells = cols.map((col) => {
+        const v = r[col.key as keyof ChangeHistoryRow];
+        if (typeof v === "number") return csvCell(v);
+        return csvCell(String(v ?? ""));
+      });
+      return [String(i + 1), ...cells].join(",");
+    });
+    const csv = "\ufeff" + [header.join(","), ...lines].join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `inventory-change-history-${from}_${to}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
   function totalsLabelColumnKey(): ChangeHistoryColumnKey | null {
@@ -318,71 +409,84 @@ export function ChangeHistoryView({
   const emptyData = rows.length === 0;
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-4">
-      <div className="shrink-0 space-y-3 pb-1">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <input
-              id="ch-search"
-              type="text"
-              placeholder="Quick filter (current list); F3 = criteria"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "F3") {
-                  e.preventDefault();
-                  setShowFilterDialog(true);
-                }
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3">
+      <div className="shrink-0 space-y-2">
+        <h1 className="text-lg font-semibold text-foreground">Inventory Change History</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            id="ch-search"
+            type="text"
+            placeholder="Input and press [Enter]"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "F3") {
+                e.preventDefault();
+                setShowFilterDialog(true);
+              }
+            }}
+            className="h-9 min-w-[14rem] flex-1 rounded border border-input bg-background px-3 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600/25 focus-visible:ring-offset-2 sm:max-w-md"
+          />
+          <Button
+            size="sm"
+            className="bg-red-600 px-4 text-white hover:bg-red-700"
+            type="button"
+            onClick={() => setShowFilterDialog(true)}
+          >
+            <Search className="mr-1.5 h-4 w-4" />
+            Search (F3)
+          </Button>
+          <div className="relative">
+            <Button size="sm" variant="outline" type="button" className="border-border bg-background" onClick={() => setShowTemplateMenu((v) => !v)}>
+              <Settings className="mr-1.5 h-4 w-4" />
+              Option
+            </Button>
+            <ProductTemplateMenu
+              open={showTemplateMenu}
+              onClose={() => setShowTemplateMenu(false)}
+              onOpenTemplateList={() => setShowTemplateListDialog(true)}
+              onOpenTemplateSettings={async () => {
+                if (selectedTemplateId) await loadTemplateDefinition(selectedTemplateId, true);
+                setShowTemplateSettingsDialog(true);
               }}
-              className="h-8 w-56 rounded border border-input bg-background px-2.5 text-sm"
             />
-            <Button
-              size="sm"
-              className="text-white"
-              style={{ backgroundColor: "var(--navbar)" }}
-              type="button"
-              onClick={() => setShowFilterDialog(true)}
-            >
-              Search (F3)
-            </Button>
-            <div className="relative">
-              <Button size="sm" variant="outline" type="button" onClick={() => setShowTemplateMenu((v) => !v)}>
-                Option
-              </Button>
-              <ProductTemplateMenu
-                open={showTemplateMenu}
-                onClose={() => setShowTemplateMenu(false)}
-                onOpenTemplateList={() => setShowTemplateListDialog(true)}
-                onOpenTemplateSettings={async () => {
-                  if (selectedTemplateId) await loadTemplateDefinition(selectedTemplateId, true);
-                  setShowTemplateSettingsDialog(true);
-                }}
-              />
-            </div>
-            <Button size="sm" variant="outline" type="button" onClick={() => setShowHelpDialog(true)}>
-              Help
-            </Button>
           </div>
+          <Button size="sm" variant="outline" type="button" className="border-border bg-background" onClick={() => setShowHelpDialog(true)}>
+            <HelpCircle className="mr-1.5 h-4 w-4" />
+            Help
+          </Button>
         </div>
-
-      </div>
-
-      <div className="flex shrink-0 flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm">
-        <span className="text-muted-foreground">
-          Period: <span className="font-medium text-foreground">{from}</span> –{" "}
-          <span className="font-medium text-foreground">{to}</span>
-        </span>
-        {(itemQ || categoryQ || includeInactive || excludeNoTransactions) && (
-          <span className="text-xs text-muted-foreground">
-            {includeInactive ? "· Including inactive " : ""}
-            {excludeNoTransactions ? "· Hiding no-txn items " : ""}
-            {itemQ ? `· Item “${itemQ}” ` : ""}
-            {categoryQ ? `· Category “${categoryQ}” ` : ""}
+        <p className="text-sm text-muted-foreground">
+          Company Name : <span className="font-medium text-foreground">{organizationName ?? "—"}</span>
+          <span className="mx-2 text-border">|</span>
+          <span>
+            Period: <span className="font-medium text-foreground">{from}</span>
+            <span className="px-1">~</span>
+            <span className="font-medium text-foreground">{to}</span>
           </span>
-        )}
-        <Button type="button" variant="outline" size="sm" onClick={() => setShowFilterDialog(true)}>
-          Edit criteria…
-        </Button>
+          {(itemQ ||
+            categoryQ ||
+            brandTerms.length > 0 ||
+            emptiesTerms.length > 0 ||
+            itemCatKeys.length > 0 ||
+            locationIds.length > 0 ||
+            itemIds.length > 0 ||
+            individualLocation ||
+            includeInactive ||
+            excludeNoTransactions) && (
+            <span className="mt-1 block text-xs">
+              {includeInactive ? "· Include deactivated " : ""}
+              {excludeNoTransactions ? "· Exclude no-txn " : ""}
+              {itemQ ? `· Item search “${itemQ}” ` : ""}
+              {itemIds.length > 0 ? `· ${itemIds.length} item(s) ` : ""}
+              {brandTerms.length > 0 ? `· Brand: ${brandTerms.join("; ")} ` : ""}
+              {emptiesTerms.length > 0 ? `· Empties: ${emptiesTerms.join("; ")} ` : ""}
+              {itemCatKeys.length > 0 ? `· Categories: ${itemCatKeys.join(", ")} ` : ""}
+              {locationIds.length > 0 ? `· ${locationIds.length} location(s) ` : ""}
+              {individualLocation ? "· Individual location " : ""}
+            </span>
+          )}
+        </p>
       </div>
 
       {error && (
@@ -391,7 +495,7 @@ export function ChangeHistoryView({
         </div>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-border">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-card shadow-sm">
         {emptyData && error ? (
           <div className="flex h-48 items-center justify-center px-4 text-center text-muted-foreground">
             Change history did not load. Use the message above, adjust criteria, then retry.
@@ -458,7 +562,7 @@ export function ChangeHistoryView({
                 {filtered.map((r, i) => (
                   <tr
                     key={r.productId}
-                    className={`border-b border-border ${i % 2 === 0 ? "bg-background" : "bg-muted/30"}`}
+                    className={`border-b border-border ${i % 2 === 0 ? "bg-white dark:bg-background" : "bg-muted/25 dark:bg-muted/20"}`}
                   >
                     <td className="border-r border-border px-2 py-1.5">
                       <input
@@ -502,7 +606,19 @@ export function ChangeHistoryView({
                     let content: ReactNode = null;
                     if (col.key === labelCol) content = "Totals";
                     else if (col.key === "packUnit") content = "—";
-                    else if (col.numeric) {
+                    else if (col.key === "closing") {
+                      const sum = totals.closing;
+                      content = <span className={`${FIGURE_CELL_CLASS} text-blue-600`}>{fmt4(sum)}</span>;
+                    } else if (col.key === "orderQty") {
+                      const sum = totals.orderQty;
+                      content = (
+                        <span className={`${FIGURE_CELL_CLASS} ${sum < 0 ? "text-red-600" : ""}`}>{fmt2(sum)}</span>
+                      );
+                    } else if (col.key === "btlQty") {
+                      content = (
+                        <span className={FIGURE_CELL_CLASS}>{Math.round(totals.btlQty).toLocaleString()}</span>
+                      );
+                    } else if (col.numeric) {
                       const sum = totals[col.key as NumericTotalKey];
                       content = <span className={FIGURE_CELL_CLASS}>{fmt(sum)}</span>;
                     }
@@ -523,16 +639,17 @@ export function ChangeHistoryView({
         )}
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border bg-muted/40 px-3 py-2">
-        <Button variant="outline" size="sm" disabled className="opacity-60">
-          Excel
-        </Button>
-        <Button variant="outline" size="sm" disabled className="opacity-60">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border bg-muted/30 px-2 py-2.5">
+        <Button
+          type="button"
+          size="sm"
+          className="bg-red-600 px-4 text-white hover:bg-red-700"
+          onClick={() => window.print()}
+        >
           Print
         </Button>
-        <span className="text-muted-foreground">|</span>
-        <Button variant="outline" size="sm" disabled className="opacity-60">
-          Relation Settings
+        <Button type="button" variant="outline" size="sm" className="border-border bg-background" onClick={downloadExcelCsv}>
+          Excel
         </Button>
       </div>
 
@@ -545,6 +662,16 @@ export function ChangeHistoryView({
         initialExcludeNoTxn={excludeNoTransactions}
         initialItemQ={itemQ}
         initialCategoryQ={categoryQ}
+        initialItemCatKeys={itemCatKeys}
+        initialIndividualLocation={individualLocation}
+        initialLocationIds={locationIds}
+        initialItemIds={itemIds}
+        initialBrandTerms={brandTerms}
+        initialEmptiesTerms={emptiesTerms}
+        locations={locations}
+        productsForPicklist={productsForPicklist}
+        categoryOptions={categoryOptions}
+        emptiesTypeOptions={emptiesTypeOptions}
       />
 
       <ProductTemplateListDialog
@@ -630,8 +757,12 @@ export function ChangeHistoryView({
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">How to use this page:</p>
           <ul className="list-disc space-y-1 pl-5 text-sm">
-            <li>Use Search (F3) to open criteria (dates, item/category filters, options). Search (F8) runs the query from that panel.</li>
-            <li>Quick filter narrows the already-loaded grid only; criteria reload data from the server.</li>
+            <li>
+              Use Search (F3) to open the criteria panel (type Summary/Daily/Monthly, date range, location, item, item category
+              checkboxes, brand category, empties type, and options including “Based on Individual Location”). Search (F8) runs
+              the query.
+            </li>
+            <li>Quick filter above the grid narrows the already-loaded list only; criteria reload data from the server.</li>
             <li>
               Table header and totals row use sticky positioning so they stay visible while you scroll the list. Pack Unit is not
               totaled.

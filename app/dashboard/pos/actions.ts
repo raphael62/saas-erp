@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { getOrgContextForAction } from "@/lib/org-context";
+import { reassignInventoryDeltaFromDefaultLocation } from "@/lib/inventory-location-balances";
 
 async function getPosOrgContext() {
   const ctx = await getOrgContextForAction();
@@ -252,6 +253,17 @@ export async function savePosSale(input: PosSaleInput) {
       })
       .eq("id", productId)
       .eq("organization_id", orgId);
+
+    if (locationId) {
+      const loc = await reassignInventoryDeltaFromDefaultLocation(
+        supabase,
+        orgId,
+        productId,
+        -deductQty,
+        locationId
+      );
+      if (loc.error) return { error: loc.error };
+    }
   }
 
   // Promo consumption: update promotions.consumed_cartons
@@ -456,6 +468,16 @@ export async function savePosSale(input: PosSaleInput) {
               .update({ stock_quantity: Math.max(0, curr + delta) })
               .eq("id", productId)
               .eq("organization_id", orgId);
+            if (locationId && delta) {
+              const loc = await reassignInventoryDeltaFromDefaultLocation(
+                supabase,
+                orgId,
+                productId,
+                delta,
+                locationId
+              );
+              if (loc.error) return { error: loc.error };
+            }
           }
         }
       }

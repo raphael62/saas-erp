@@ -191,6 +191,7 @@ function formatMoney(n: number | null | undefined) {
 }
 
 export function SalesInvoiceList({
+  organizationId,
   invoices = [],
   lines = [],
   products = [],
@@ -208,6 +209,7 @@ export function SalesInvoiceList({
   loadOutSheetLines = [],
   editId,
 }: {
+  organizationId: string;
   invoices: Invoice[];
   lines: InvoiceLine[];
   products: Product[];
@@ -538,6 +540,7 @@ export function SalesInvoiceList({
       )}
 
       <SalesInvoiceFormDialog
+        organizationId={organizationId}
         open={showForm}
         onOpenChange={(next) => {
           setShowForm(next);
