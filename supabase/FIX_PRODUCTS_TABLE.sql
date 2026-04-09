@@ -7,8 +7,9 @@
 --   - plastic_cost
 --
 -- Removes (or neutralizes) selling price columns if present:
---   - unit_price / sale_price / cost_price
--- Prices should come from the pricelist instead.
+--   - unit_price / sale_price
+-- Do NOT drop cost_price: the app uses it for inventory valuation (Stock by Location, etc.).
+-- Prices for selling should come from the pricelist; cost_price remains on products.
 -- ============================================================
 
 DO $$
@@ -75,7 +76,7 @@ BEGIN
 
   ALTER TABLE public.products DROP COLUMN IF EXISTS unit_price CASCADE;
   ALTER TABLE public.products DROP COLUMN IF EXISTS sale_price CASCADE;
-  ALTER TABLE public.products DROP COLUMN IF EXISTS cost_price CASCADE;
+  -- cost_price: keep (see header comment). Migration 063 re-adds if missing.
 
   -- ------------------------------------------------------------
   -- Helpful indexes (safe if already exist)
