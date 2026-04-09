@@ -92,6 +92,11 @@ export default async function StockByLocationPage() {
         balancesRes.error.message.toLowerCase().includes("schema cache"))
   );
 
+  const dataLoadError = [productsRes.error, locationsRes.error]
+    .filter((e): e is NonNullable<typeof e> => Boolean(e))
+    .map((e) => e.message)
+    .join(" · ") || null;
+
   const balances = balancesTableMissing
     ? []
     : ((balancesRes.data ?? []) as Array<{
@@ -114,6 +119,7 @@ export default async function StockByLocationPage() {
       emptiesTypeOptions={emptiesTypeOptions}
       generatedAtIso={generatedAtIso}
       balancesTableMissing={balancesTableMissing}
+      dataLoadError={dataLoadError}
     />
   );
 }

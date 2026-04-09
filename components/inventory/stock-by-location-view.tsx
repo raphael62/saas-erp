@@ -39,6 +39,8 @@ type Props = {
   emptiesTypeOptions: string[];
   generatedAtIso: string;
   balancesTableMissing?: boolean;
+  /** Set when the products or locations query failed (otherwise the UI shows an empty list with no explanation). */
+  dataLoadError?: string | null;
 };
 
 function n(v: unknown) {
@@ -164,6 +166,7 @@ export function StockByLocationView({
   emptiesTypeOptions,
   generatedAtIso,
   balancesTableMissing,
+  dataLoadError,
 }: Props) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -526,6 +529,16 @@ export function StockByLocationView({
         </div>
         <p className="text-muted-foreground shrink-0 text-sm">Last updated: {lastUpdated}</p>
       </div>
+
+      {dataLoadError && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100">
+          <span className="font-medium">Could not load products or locations.</span>{" "}
+          <span className="opacity-90">{dataLoadError}</span>{" "}
+          <span className="text-muted-foreground">
+            (On production this is often a missing migration, RLS, or PostgREST schema cache—check Supabase logs.)
+          </span>
+        </div>
+      )}
 
       {balancesTableMissing && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
