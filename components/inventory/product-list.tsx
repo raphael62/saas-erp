@@ -602,7 +602,7 @@ export function ProductList({
             });
             if (updated?.error) {
               setTemplateSaving(false);
-              return;
+              return { error: updated.error };
             }
           } else {
             const created = await createListTemplate({
@@ -612,21 +612,27 @@ export function ProductList({
               authorization_user_id: meta.authorization_user_id ?? null,
               is_default: Boolean(meta.is_default),
             });
-            if (created?.error || !created.data?.id) {
+            if (created?.error) {
               setTemplateSaving(false);
-              return;
+              return { error: created.error };
+            }
+            if (!created.data?.id) {
+              setTemplateSaving(false);
+              return { error: "Could not create template." };
             }
             templateId = created.data.id as string;
           }
 
           if (templateId) {
             const savedCols = await saveTemplateColumns(templateId, columns);
-            if (!savedCols?.error) {
-              setManualSortChanged(false);
-              await loadTemplateLists(templateId);
-              await loadTemplateDefinition(templateId, true);
-              setShowTemplateSettingsDialog(false);
+            if (savedCols?.error) {
+              setTemplateSaving(false);
+              return { error: savedCols.error };
             }
+            setManualSortChanged(false);
+            await loadTemplateLists(templateId);
+            await loadTemplateDefinition(templateId, true);
+            setShowTemplateSettingsDialog(false);
           }
           setTemplateSaving(false);
         }}

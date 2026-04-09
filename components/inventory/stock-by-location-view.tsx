@@ -180,16 +180,17 @@ export function StockByLocationView({
   const balanceMap = useMemo(() => {
     const m = new Map<string, Map<string, number>>();
     for (const b of balances) {
-      const pid = b.product_id;
+      const pid = String(b.product_id);
       if (!m.has(pid)) m.set(pid, new Map());
       const locMap = m.get(pid)!;
-      locMap.set(b.location_id, n(b.quantity));
+      locMap.set(String(b.location_id), n(b.quantity));
     }
     return m;
   }, [balances]);
 
   const qtyAtLocation = useCallback(
-    (productId: string, locationId: string) => balanceMap.get(productId)?.get(locationId) ?? 0,
+    (productId: string, locationId: string) =>
+      balanceMap.get(String(productId))?.get(String(locationId)) ?? 0,
     [balanceMap]
   );
 
@@ -203,13 +204,15 @@ export function StockByLocationView({
 
   const filteredProducts = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const itemSet =
+      appliedFilter.itemIds.length > 0 ? new Set(appliedFilter.itemIds.map(String)) : null;
     return products.filter((p) => {
       if (q) {
         const code = (p.code ?? "").toLowerCase();
         const name = p.name.toLowerCase();
         if (!code.includes(q) && !name.includes(q)) return false;
       }
-      if (appliedFilter.itemIds.length > 0 && !appliedFilter.itemIds.includes(p.id)) return false;
+      if (itemSet && !itemSet.has(String(p.id))) return false;
       if (appliedFilter.brandTerms.length > 0) {
         const cat = (p.category ?? "").trim();
         if (!appliedFilter.brandTerms.includes(cat)) return false;
@@ -225,8 +228,8 @@ export function StockByLocationView({
   /** Filter columns by Filter → Location (empty = all sites). */
   const visibleLocations = useMemo(() => {
     if (appliedFilter.locationIds.length === 0) return sortedLocations;
-    const selected = new Set(appliedFilter.locationIds);
-    const picked = sortedLocations.filter((l) => selected.has(l.id));
+    const selected = new Set(appliedFilter.locationIds.map(String));
+    const picked = sortedLocations.filter((l) => selected.has(String(l.id)));
     return picked.length > 0 ? picked : sortedLocations;
   }, [sortedLocations, appliedFilter.locationIds]);
 
@@ -514,7 +517,12 @@ export function StockByLocationView({
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Stock by Location</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">Multi-location stock visibility and management</p>
+          <p className="text-muted-foreground mt-0.5 max-w-2xl text-sm leading-relaxed">
+            For each product, the number in a depot column is{" "}
+            <span className="text-foreground">how many units are available at that depot</span>. Those numbers change
+            when you save a purchase, a sale (including POS), or a stock transfer that involves that depot. Use Refresh if
+            you just posted something in another tab.
+          </p>
         </div>
         <p className="text-muted-foreground shrink-0 text-sm">Last updated: {lastUpdated}</p>
       </div>
@@ -829,14 +837,32 @@ export function StockByLocationView({
         emptiesTypeOptions={emptiesTypeOptions}
       />
 
-      <Dialog open={showHelpDialog} onOpenChange={setShowHelpDialog} title="Stock by Location Help" showGearIcon={false} contentClassName="max-w-lg text-sm">
-        <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">How to use this page:</p>
-          <ul className="list-disc space-y-1 pl-5 text-sm">
-            <li>Use the search field to filter products by code or name (live).</li>
-            <li>Press F3 to scroll to the filter panel. Set location, item, brand, and empties filters, then Apply filters.</li>
-            <li>Click Excel to download CSV. Option menu has Refresh. Click column headers to sort.</li>
-            <li>Product codes link to the item list for editing.</li>
+      <Dialog open={showHelpDialog} onOpenChange={setShowHelpDialog} title="Stock by Location — simple guide" showGearIcon={false} contentClassName="max-w-lg text-sm">
+        <div className="space-y-4">
+          <div className="space-y-2 rounded-md border border-border bg-muted/30 px-3 py-2.5">
+            <p className="font-medium text-foreground">What am I looking at?</p>
+            <p className="text-muted-foreground">
+              One number per product per depot: <span className="text-foreground">available quantity at that depot</span>
+              . It is what the system stored after your inventory transactions—not an estimate.
+            </p>
+            <p className="text-muted-foreground">
+              <span className="text-foreground">Purchases and receipts</span> add stock to the depot on the document.{" "}
+              <span className="text-foreground">Sales and POS</span> take stock from the depot on that sale.{" "}
+              <span className="text-foreground">Stock transfers</span> move units between depots. If a depot shows 0,
+              nothing has been received or moved there yet for that product.
+            </p>
+            <p className="text-muted-foreground">
+              <span className="text-foreground">Total Stock</span> here is the sum of the depot columns in this table
+              (for the filters you applied). It should match the product&apos;s overall stock when every depot is
+              included and nothing is filtered out.
+            </p>
+          </div>
+          <p className="text-sm font-medium text-foreground">Using this page</p>
+          <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+            <li>Search by product code or name.</li>
+            <li>Press F3 to filter by depot, item, brand, or empties.</li>
+            <li>Option → Refresh after posting elsewhere. Excel exports the grid. Column headers sort the table.</li>
+            <li>Product codes link to the product list.</li>
           </ul>
           <div className="flex justify-end pt-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setShowHelpDialog(false)}>

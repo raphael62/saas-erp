@@ -93,6 +93,7 @@ export async function addProduct(formData: FormData) {
   if (error) return { error: error.message };
   revalidatePath("/dashboard/inventory");
   revalidatePath("/dashboard/inventory/products");
+  revalidatePath("/dashboard/inventory/stocks-by-location");
   return { ok: true };
 }
 
@@ -114,6 +115,7 @@ export async function updateProduct(id: string, formData: FormData) {
   if (error) return { error: error.message };
   revalidatePath("/dashboard/inventory");
   revalidatePath("/dashboard/inventory/products");
+  revalidatePath("/dashboard/inventory/stocks-by-location");
   return { ok: true };
 }
 
@@ -122,6 +124,8 @@ export async function deleteProduct(id: string) {
   const { error } = await supabase.from("products").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidatePath("/dashboard/inventory");
+  revalidatePath("/dashboard/inventory/products");
+  revalidatePath("/dashboard/inventory/stocks-by-location");
   return { ok: true };
 }
 
@@ -367,6 +371,7 @@ export async function saveTemplateColumns(templateId: string, columns: TemplateC
   }
 
   revalidatePath("/dashboard/inventory/products");
+  revalidatePath("/dashboard/inventory/change-history");
   return { ok: true };
 }
 

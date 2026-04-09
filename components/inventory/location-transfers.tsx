@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,7 @@ export function LocationTransfers({
   products = [],
   tableMissing = false,
 }: LocationTransfersProps) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -102,7 +104,7 @@ export function LocationTransfers({
       return;
     }
     setMessage("Stock transfer request deleted.");
-    window.location.reload();
+    router.refresh();
   }
 
   return (
@@ -229,7 +231,7 @@ export function LocationTransfers({
         locations={locations}
         products={products}
         initialTransfer={editing}
-        onSaved={() => window.location.reload()}
+        onSaved={() => router.refresh()}
       />
     </div>
   );

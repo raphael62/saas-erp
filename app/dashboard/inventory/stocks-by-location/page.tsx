@@ -31,13 +31,13 @@ export default async function StockByLocationPage() {
         "id, code, name, category, pack_unit, min_stock, reorder_qty, cost_price, empties_type, is_active"
       )
       .eq("organization_id", orgId)
-      .eq("is_active", true)
+      .or("is_active.eq.true,is_active.is.null")
       .order("code"),
     supabase
       .from("locations")
       .select("id, code, name, is_active")
       .eq("organization_id", orgId)
-      .eq("is_active", true)
+      .or("is_active.eq.true,is_active.is.null")
       .order("code"),
     supabase
       .from("inventory_location_balances")
@@ -58,7 +58,7 @@ export default async function StockByLocationPage() {
   }>;
 
   const products = productRows.map((r) => ({
-    id: r.id,
+    id: String(r.id),
     code: r.code,
     name: r.name,
     category: r.category,
@@ -70,7 +70,7 @@ export default async function StockByLocationPage() {
   }));
 
   const productsForPicklist = productRows.map((r) => ({
-    id: r.id,
+    id: String(r.id),
     code: r.code,
     name: r.name,
     is_active: true,
@@ -79,12 +79,12 @@ export default async function StockByLocationPage() {
   const categoryOptions = uniqSorted(productRows.map((r) => r.category));
   const emptiesTypeOptions = uniqSorted(productRows.map((r) => r.empties_type));
 
-  const locations = (locationsRes.data ?? []) as Array<{
+  const locations = ((locationsRes.data ?? []) as Array<{
     id: string;
     code: string;
     name: string;
     is_active?: boolean | null;
-  }>;
+  }>).map((l) => ({ ...l, id: String(l.id) }));
 
   const balancesTableMissing = Boolean(
     balancesRes.error &&

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Package, Plus, Trophy, TrendingUp, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -488,6 +488,7 @@ export function NewPOSSale({
   paymentAccounts?: PaymentAccount[];
   paymentMethods?: PaymentMethod[];
 }) {
+  const router = useRouter();
   const cashier = cashierName ?? "Cashier";
   const today = new Date().toISOString().slice(0, 10);
   const [saleDate, setSaleDate] = useState(today);
@@ -1715,6 +1716,8 @@ export function NewPOSSale({
             if (result?.error) {
               throw new Error(result.error);
             }
+
+            router.refresh();
 
             if (salesRepId?.trim() && saleDate) {
               const monthKey = saleDate.slice(0, 7);

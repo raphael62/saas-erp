@@ -2,18 +2,27 @@ import { createClient } from "@/lib/supabase/server";
 
 type ServerClient = Awaited<ReturnType<typeof createClient>>;
 
-/** Matches `sync_inventory_location_balance_from_product`: first active location by code (nulls last), then name. */
+/**
+ * Same location as `sync_inventory_location_balance_from_product` (055): first active location
+ * by `order by code nulls last, name` in PostgreSQL. Must not use numeric code sort — that
+ * disagreed with the trigger and broke `reassignInventoryDeltaFromDefaultLocation`.
+ */
 export async function getDefaultInventoryLocationId(
   supabase: ServerClient,
   orgId: string
 ): Promise<string | null> {
-  const { data, error } = await supabase
+  const { data, error } = await supabase.rpc("get_default_inventory_location_id", {
+    p_organization_id: orgId,
+  });
+  if (!error && data != null) return String(data);
+
+  // Fallback if migration 061 not applied yet (RPC missing).
+  const { data: rows, error: qErr } = await supabase
     .from("locations")
     .select("id, code, name, is_active")
     .eq("organization_id", orgId);
-  if (error || !data?.length) return null;
-  // Align with SQL: `where coalesce(l.is_active, true)` — `.eq("is_active", true)` wrongly excludes NULL.
-  const eligible = data.filter((l) => (l as { is_active?: boolean | null }).is_active !== false);
+  if (qErr || !rows?.length) return null;
+  const eligible = rows.filter((l) => (l as { is_active?: boolean | null }).is_active !== false);
   if (!eligible.length) return null;
   const sorted = [...eligible].sort((a, b) => {
     const ac = a.code != null && String(a.code).trim() !== "" ? String(a.code) : null;
@@ -21,10 +30,10 @@ export async function getDefaultInventoryLocationId(
     if (ac === null && bc !== null) return 1;
     if (ac !== null && bc === null) return -1;
     if (ac !== null && bc !== null) {
-      const c = ac.localeCompare(bc, undefined, { numeric: true });
+      const c = ac.localeCompare(bc, undefined, { numeric: false, sensitivity: "base" });
       if (c !== 0) return c;
     }
-    return String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { numeric: true });
+    return String(a.name ?? "").localeCompare(String(b.name ?? ""), undefined, { sensitivity: "base" });
   });
   return sorted[0]?.id ? String(sorted[0].id) : null;
 }
@@ -67,6 +76,9 @@ export async function incrementLocationBalance(
 /**
  * The DB trigger adds `stockQuantityDelta` to the default location when `products.stock_quantity` changes.
  * When the business event actually occurred at `targetLocationId`, move that delta from default to target.
+ *
+ * When global stock is 0, migration 062's trigger deletes all per-location rows; we must not upsert balances
+ * here or we would recreate rows after that delete.
  */
 export async function reassignInventoryDeltaFromDefaultLocation(
   supabase: ServerClient,
@@ -76,6 +88,18 @@ export async function reassignInventoryDeltaFromDefaultLocation(
   targetLocationId: string | null | undefined
 ): Promise<{ error?: string }> {
   if (!stockQuantityDelta || !targetLocationId) return {};
+
+  const { data: prodRow, error: prodErr } = await supabase
+    .from("products")
+    .select("stock_quantity")
+    .eq("organization_id", orgId)
+    .eq("id", productId)
+    .maybeSingle();
+  if (prodErr) return { error: prodErr.message };
+  if (Number((prodRow as { stock_quantity?: number } | null)?.stock_quantity ?? 0) === 0) {
+    return {};
+  }
+
   const defaultId = await getDefaultInventoryLocationId(supabase, orgId);
   if (!defaultId) {
     // Trigger also skips per-location when no eligible location; put stock at the document location.

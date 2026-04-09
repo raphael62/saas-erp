@@ -26,10 +26,11 @@ type ProductTemplateSettingsDialogProps = {
   onOpenChange: (open: boolean) => void;
   template: TemplateMeta;
   columns: TemplateColumnSetting[];
-  onSave: (meta: TemplateMeta, columns: TemplateColumnSetting[]) => Promise<void>;
   saving?: boolean;
   /** Merged with built-in product column labels (e.g. other list modules). */
   columnLabels?: Record<string, string>;
+  /** Return `{ error }` on failure so the dialog can show the message. */
+  onSave: (meta: TemplateMeta, columns: TemplateColumnSetting[]) => Promise<void | { error: string }>;
 };
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -253,7 +254,7 @@ export function ProductTemplateSettingsDialog({
                 return;
               }
               setError(null);
-              await onSave(
+              const result = await onSave(
                 {
                   ...template,
                   name: name.trim(),
@@ -263,6 +264,9 @@ export function ProductTemplateSettingsDialog({
                 },
                 workingColumns
               );
+              if (result && typeof result === "object" && "error" in result && result.error) {
+                setError(result.error);
+              }
             }}
           >
             {saving ? "Saving..." : "Save"}

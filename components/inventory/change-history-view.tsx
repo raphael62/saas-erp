@@ -52,7 +52,8 @@ const MODULE_KEY = "inventory_change_history";
 const CHECKBOX_COL_WIDTH = 48;
 const ROW_NUMBER_COL_WIDTH = 40;
 
-type ChangeHistoryColumnKey = keyof ChangeHistoryRow;
+/** Grid columns only — `productId` is kept on rows for keys/search but not shown as a column. */
+type ChangeHistoryColumnKey = Exclude<keyof ChangeHistoryRow, "productId">;
 type SortableChangeHistoryColumn = ChangeHistoryColumnKey;
 
 type NumericTotalKey =
@@ -66,7 +67,6 @@ type NumericTotalKey =
   | "saleValue";
 
 const TEMPLATE_COLUMN_LABELS: Record<string, string> = {
-  productId: "Product ID",
   itemCode: "Item Code",
   itemName: "Item name",
   packUnit: "Pack Unit",
@@ -88,13 +88,12 @@ const CHANGE_HISTORY_COLUMNS: Array<{
   defaultWidth?: number;
   numeric?: boolean;
 }> = [
-  { key: "productId", label: "Product ID", defaultVisible: false, defaultWidth: 200 },
   { key: "itemCode", label: "Item Code", sortable: true, defaultVisible: true, defaultWidth: 120 },
   { key: "itemName", label: "Item name", sortable: true, defaultVisible: true, defaultWidth: 200 },
-  { key: "packUnit", label: "Pack Unit", sortable: true, defaultVisible: false, defaultWidth: 110, numeric: true },
-  { key: "opening", label: "Opening", sortable: true, defaultVisible: false, defaultWidth: 100, numeric: true },
-  { key: "purchases", label: "Purchases", sortable: true, defaultVisible: false, defaultWidth: 100, numeric: true },
-  { key: "sales", label: "Sales", sortable: true, defaultVisible: false, defaultWidth: 100, numeric: true },
+  { key: "packUnit", label: "Pack Unit", sortable: true, defaultVisible: true, defaultWidth: 110, numeric: true },
+  { key: "opening", label: "Opening", sortable: true, defaultVisible: true, defaultWidth: 100, numeric: true },
+  { key: "purchases", label: "Purchases", sortable: true, defaultVisible: true, defaultWidth: 100, numeric: true },
+  { key: "sales", label: "Sales", sortable: true, defaultVisible: true, defaultWidth: 100, numeric: true },
   { key: "closing", label: "Closing", sortable: true, defaultVisible: true, defaultWidth: 100, numeric: true },
   { key: "orderQty", label: "Order", sortable: true, defaultVisible: true, defaultWidth: 100, numeric: true },
   { key: "btlQty", label: "Btl Qty", sortable: true, defaultVisible: true, defaultWidth: 90, numeric: true },
@@ -162,10 +161,15 @@ function compareRows(a: ChangeHistoryRow, b: ChangeHistoryRow, col: SortableChan
   return cmp * mul;
 }
 
+const ALLOWED_CHANGE_HISTORY_TEMPLATE_KEYS = new Set(
+  CHANGE_HISTORY_COLUMNS.map((c) => c.key as string)
+);
+
 function mergeTemplateColumnsWithDefaults(cols: TemplateColumnSetting[]): TemplateColumnSetting[] {
+  const colsFiltered = cols.filter((c) => ALLOWED_CHANGE_HISTORY_TEMPLATE_KEYS.has(c.column_key));
   const defaults = defaultTemplateColumns();
-  const byKey = new Map(cols.map((c) => [c.column_key, c]));
-  const merged: TemplateColumnSetting[] = [...cols];
+  const byKey = new Map(colsFiltered.map((c) => [c.column_key, c]));
+  const merged: TemplateColumnSetting[] = [...colsFiltered];
   let maxOrder = merged.reduce((m, c) => Math.max(m, c.display_order ?? 0), 0);
   for (const d of defaults) {
     if (!byKey.has(d.column_key)) {
@@ -398,7 +402,7 @@ export function ChangeHistoryView({
   }
 
   function totalsLabelColumnKey(): ChangeHistoryColumnKey | null {
-    const prefer: ChangeHistoryColumnKey[] = ["itemCode", "itemName", "productId"];
+    const prefer: ChangeHistoryColumnKey[] = ["itemCode", "itemName"];
     for (const k of prefer) {
       if (visibleDataColumns.some((c) => c.key === k)) return k;
     }
@@ -717,7 +721,7 @@ export function ChangeHistoryView({
             });
             if (updated?.error) {
               setTemplateSaving(false);
-              return;
+              return { error: updated.error };
             }
           } else {
             const created = await createListTemplate({
@@ -727,21 +731,27 @@ export function ChangeHistoryView({
               authorization_user_id: meta.authorization_user_id ?? null,
               is_default: Boolean(meta.is_default),
             });
-            if (created?.error || !created.data?.id) {
+            if (created?.error) {
               setTemplateSaving(false);
-              return;
+              return { error: created.error };
+            }
+            if (!created.data?.id) {
+              setTemplateSaving(false);
+              return { error: "Could not create template." };
             }
             templateId = created.data.id as string;
           }
 
           if (templateId) {
             const savedCols = await saveTemplateColumns(templateId, columns);
-            if (!savedCols?.error) {
-              setManualSortChanged(false);
-              await loadTemplateLists(templateId);
-              await loadTemplateDefinition(templateId, true);
-              setShowTemplateSettingsDialog(false);
+            if (savedCols?.error) {
+              setTemplateSaving(false);
+              return { error: savedCols.error };
             }
+            setManualSortChanged(false);
+            await loadTemplateLists(templateId);
+            await loadTemplateDefinition(templateId, true);
+            setShowTemplateSettingsDialog(false);
           }
           setTemplateSaving(false);
         }}
@@ -767,7 +777,10 @@ export function ChangeHistoryView({
               Table header and totals row use sticky positioning so they stay visible while you scroll the list. Pack Unit is not
               totaled.
             </li>
-            <li>Option → Template Settings / Template List: column visibility, width, order, and default sort (same as Item List).</li>
+            <li>
+              Option → Template Settings / Template List: column visibility, width, order, and default sort (same as Item List).
+              Changes are stored with the template.
+            </li>
             <li>
               Cartons: Opening + Purchases − Sales = Closing. Opening is ledger-based from your go-live date to the day before
               the selected period. Sales counts posted invoices, plus empties dispatch for empties SKUs. Order = Sales − Closing.

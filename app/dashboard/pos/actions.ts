@@ -489,6 +489,8 @@ export async function savePosSale(input: PosSaleInput) {
   revalidatePath("/dashboard/pos/daily-payments");
   revalidatePath("/dashboard/sales/empties-receive");
   revalidatePath("/dashboard/sales/customer-empties-statement");
+  revalidatePath("/dashboard/inventory/stocks-by-location");
+  revalidatePath("/dashboard/inventory");
 
   return {
     ok: true,

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { FileSpreadsheet, Plus, Printer, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,7 @@ export function StockCountSheets({
   tableMissing = false,
   locationBalances = [],
 }: StockCountSheetsProps) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -112,7 +114,7 @@ export function StockCountSheets({
       return;
     }
     setMessage("Stock count sheet deleted.");
-    window.location.reload();
+    router.refresh();
   }
 
   return (
@@ -229,7 +231,7 @@ export function StockCountSheets({
         products={products}
         locationBalances={locationBalances}
         initialSheet={editing}
-        onSaved={() => window.location.reload()}
+        onSaved={() => router.refresh()}
       />
     </div>
   );

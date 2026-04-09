@@ -141,6 +141,8 @@ export async function saveStockCountSheet(input: SaveStockCountSheetInput) {
   }
 
   revalidatePath("/dashboard/inventory/stock-count-sheets");
+  revalidatePath("/dashboard/inventory/stocks-by-location");
+  revalidatePath("/dashboard/inventory");
   return { ok: true };
 }
 
@@ -159,5 +161,7 @@ export async function deleteStockCountSheet(idInput: string) {
 
   if (deleteErr) return { error: deleteErr.message };
   revalidatePath("/dashboard/inventory/stock-count-sheets");
+  revalidatePath("/dashboard/inventory/stocks-by-location");
+  revalidatePath("/dashboard/inventory");
   return { ok: true };
 }
