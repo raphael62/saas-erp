@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { buildStockCheckSnapshot } from "@/lib/stock-check-snapshot";
 
 function normalizeDate(input: string | null | undefined) {
   return String(input ?? "").slice(0, 10);
@@ -90,7 +91,10 @@ export async function saveStockCountSheet(input: SaveStockCountSheetInput) {
     notes,
   };
 
+  let savedSheetId = "";
+
   if (id) {
+    savedSheetId = id;
     const { error: updateErr } = await supabase
       .from("stock_count_sheets")
       .update(payload)
@@ -129,6 +133,7 @@ export async function saveStockCountSheet(input: SaveStockCountSheetInput) {
 
     const sheetId = String((inserted as { id?: string } | null)?.id ?? "");
     if (!sheetId) return { error: "Failed to create stock count sheet." };
+    savedSheetId = sheetId;
 
     const { error: insertLinesErr } = await supabase.from("stock_count_lines").insert(
       lines.map((l) => ({
@@ -140,10 +145,16 @@ export async function saveStockCountSheet(input: SaveStockCountSheetInput) {
     if (insertLinesErr) return { error: insertLinesErr.message };
   }
 
+  const snap = await buildStockCheckSnapshot(supabase, orgId, savedSheetId);
+  if (snap.error) {
+    return { error: `Stock count saved but stock check could not be generated: ${snap.error}` };
+  }
+
   revalidatePath("/dashboard/inventory/stock-count-sheets");
+  revalidatePath("/dashboard/inventory/stock-checks");
   revalidatePath("/dashboard/inventory/stocks-by-location");
   revalidatePath("/dashboard/inventory");
-  return { ok: true };
+  return { ok: true, id: savedSheetId };
 }
 
 export async function deleteStockCountSheet(idInput: string) {
@@ -161,6 +172,7 @@ export async function deleteStockCountSheet(idInput: string) {
 
   if (deleteErr) return { error: deleteErr.message };
   revalidatePath("/dashboard/inventory/stock-count-sheets");
+  revalidatePath("/dashboard/inventory/stock-checks");
   revalidatePath("/dashboard/inventory/stocks-by-location");
   revalidatePath("/dashboard/inventory");
   return { ok: true };

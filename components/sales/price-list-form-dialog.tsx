@@ -68,17 +68,14 @@ export function PriceListFormDialog({
   }, [products, initialLines]);
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [itemSearch, setItemSearch] = useState("");
-  const [vatTypesById, setVatTypesById] = useState<Record<string, "inc" | "exc">>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savePending, setSavePending] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setHiddenIds(new Set());
     setItemSearch("");
-    const nextVatTypes: Record<string, "inc" | "exc"> = {};
-    for (const row of seededRows) {
-      nextVatTypes[row.productId] = row.vatType === "exc" ? "exc" : "inc";
-    }
-    setVatTypesById(nextVatTypes);
+    setSaveError(null);
   }, [open, initialPriceList?.id, seededRows]);
 
   const searchTerm = itemSearch.trim().toLowerCase();
@@ -105,16 +102,30 @@ export function PriceListFormDialog({
       contentClassName="max-w-5xl text-sm"
     >
       <form
+        key={`${initialPriceList?.id ?? "new"}-${open}`}
         action={async (formData) => {
-          const result = await savePriceList(formData);
-          if (result?.ok) {
-            onOpenChange(false);
-            onSaved();
+          setSaveError(null);
+          setSavePending(true);
+          try {
+            const result = await savePriceList(formData);
+            if (result && "ok" in result && result.ok) {
+              onOpenChange(false);
+              onSaved();
+            } else {
+              setSaveError((result as { error?: string })?.error ?? "Save failed");
+            }
+          } finally {
+            setSavePending(false);
           }
         }}
         className="space-y-2"
       >
         {initialPriceList?.id && <input type="hidden" name="id" value={initialPriceList.id} />}
+        {saveError && (
+          <p className="rounded border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-xs text-destructive">
+            {saveError}
+          </p>
+        )}
 
         <div className="grid gap-x-5 gap-y-1.5 sm:grid-cols-2">
           <div>
@@ -198,7 +209,10 @@ export function PriceListFormDialog({
             <tbody>
               {productRows.map((row, idx) => (
                 <tr key={row.productId} className={idx % 2 === 0 ? "bg-background" : "bg-muted/20"}>
-                  <td className="border-b border-r border-border px-1.5 py-1 text-muted-foreground">{idx + 1}</td>
+                  <td className="border-b border-r border-border px-1.5 py-1 text-muted-foreground">
+                    <input type="hidden" name={`line_product_id_${row.productId}`} value={row.productId} />
+                    {idx + 1}
+                  </td>
                   <td className="border-b border-r border-border px-1.5 py-1">{row.code || "—"}</td>
                   <td className="border-b border-r border-border px-1.5 py-1">{row.name}</td>
                   <td className="border-b border-r border-border px-1.5 py-1 text-right">{row.packUnit || "—"}</td>
@@ -231,39 +245,14 @@ export function PriceListFormDialog({
                     </select>
                   </td>
                   <td className="border-b border-border px-1 py-0.5">
-                    <input
-                      type="hidden"
+                    <select
                       name={`line_vat_${row.productId}`}
-                      value={vatTypesById[row.productId] ?? row.vatType}
-                    />
-                    <div className="grid grid-cols-2 gap-1">
-                      <button
-                        type="button"
-                        className={`h-7 rounded border text-xs ${
-                          (vatTypesById[row.productId] ?? row.vatType) === "inc"
-                            ? "border-[var(--navbar)] bg-[var(--navbar)] text-white"
-                            : "border-input bg-background text-foreground"
-                        }`}
-                        onClick={() =>
-                          setVatTypesById((prev) => ({ ...prev, [row.productId]: "inc" }))
-                        }
-                      >
-                        Incl
-                      </button>
-                      <button
-                        type="button"
-                        className={`h-7 rounded border text-xs ${
-                          (vatTypesById[row.productId] ?? row.vatType) === "exc"
-                            ? "border-[var(--navbar)] bg-[var(--navbar)] text-white"
-                            : "border-input bg-background text-foreground"
-                        }`}
-                        onClick={() =>
-                          setVatTypesById((prev) => ({ ...prev, [row.productId]: "exc" }))
-                        }
-                      >
-                        Excl
-                      </button>
-                    </div>
+                      defaultValue={row.vatType === "exc" ? "exc" : "inc"}
+                      className="h-7 w-full rounded border border-input bg-background px-1.5 text-xs"
+                    >
+                      <option value="inc">Incl</option>
+                      <option value="exc">Excl</option>
+                    </select>
                   </td>
                   <td className="border-b border-l border-border px-0.5 py-0.5 text-center">
                     <button
@@ -291,9 +280,15 @@ export function PriceListFormDialog({
           <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button type="submit" size="sm" style={{ backgroundColor: "var(--navbar)" }} className="text-white">
+          <Button
+            type="submit"
+            size="sm"
+            disabled={savePending}
+            style={{ backgroundColor: "var(--navbar)" }}
+            className="text-white"
+          >
             <Save className="h-4 w-4" />
-            {initialPriceList?.id ? "Update Price List" : "Save Price List"}
+            {savePending ? "Saving…" : initialPriceList?.id ? "Update Price List" : "Save Price List"}
           </Button>
         </div>
       </form>

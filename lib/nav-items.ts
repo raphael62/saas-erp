@@ -132,6 +132,7 @@ export const mainNavItems: MainNavItemSerialized[] = [
       { href: "/dashboard/inventory/change-history", label: "Change history", iconKey: "History" },
       { href: "/dashboard/inventory/location-transfers", label: "Location Transfers", iconKey: "ArrowLeftRight" },
       { href: "/dashboard/inventory/stock-count-sheets", label: "Stock Count Sheets", iconKey: "ClipboardList" },
+      { href: "/dashboard/inventory/stock-checks", label: "Stock Checks", iconKey: "FileCheck" },
     ],
   },
   {

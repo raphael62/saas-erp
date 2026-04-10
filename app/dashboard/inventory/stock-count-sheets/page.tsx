@@ -16,7 +16,7 @@ export default async function StockCountSheetsPage() {
   const { orgId } = await getProfileWithOrg(user.id, user.email ?? undefined);
   if (!orgId) return <NoOrgPrompt />;
 
-  const [sheetsRes, locationsRes, linesRes, productsRes, balancesRes] = await Promise.all([
+  const [sheetsRes, locationsRes, linesRes, productsRes, balancesRes, stockChecksRes] = await Promise.all([
     supabase
       .from("stock_count_sheets")
       .select("id, sheet_no, count_date, location_id, notes, location:locations!location_id(id, code, name)")
@@ -44,6 +44,7 @@ export default async function StockCountSheetsPage() {
       .from("inventory_location_balances")
       .select("product_id, location_id, quantity")
       .eq("organization_id", orgId),
+    supabase.from("stock_checks").select("id, stock_count_sheet_id").eq("organization_id", orgId),
   ]);
 
   const tableMissing = Boolean(
@@ -57,6 +58,14 @@ export default async function StockCountSheetsPage() {
   const locations = locationsRes.error ? [] : (locationsRes.data ?? []);
   const products = productsRes.error ? [] : (productsRes.data ?? []);
   const locationBalances = balancesRes.error ? [] : (balancesRes.data ?? []);
+  const stockCheckIdBySheetId: Record<string, string> = {};
+  if (!stockChecksRes.error && stockChecksRes.data) {
+    for (const sc of stockChecksRes.data as Array<{ id?: string; stock_count_sheet_id?: string }>) {
+      const sid = String(sc.stock_count_sheet_id ?? "");
+      const cid = String(sc.id ?? "");
+      if (sid && cid) stockCheckIdBySheetId[sid] = cid;
+    }
+  }
   const linesBySheet = new Map<string, unknown[]>();
   for (const l of lineRows as Array<{ stock_count_sheet_id?: string }>) {
     const key = String(l.stock_count_sheet_id ?? "");
@@ -99,6 +108,7 @@ export default async function StockCountSheetsPage() {
         locations={locations as Parameters<typeof StockCountSheets>[0]["locations"]}
         products={products as Parameters<typeof StockCountSheets>[0]["products"]}
         locationBalances={locationBalances as Parameters<typeof StockCountSheets>[0]["locationBalances"]}
+        stockCheckIdBySheetId={stockCheckIdBySheetId}
         tableMissing={tableMissing}
       />
     </div>

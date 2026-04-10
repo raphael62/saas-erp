@@ -1,11 +1,5 @@
--- Run this in Supabase SQL Editor
--- Adds sales price list document tables:
--- - price_lists (header)
--- - price_list_items (line items)
--- NOTE:
---   This script auto-detects the data type of public.products.id
---   (uuid/int/bigint) and creates price_list_items.product_id with
---   a matching type to avoid FK type mismatch errors.
+-- Price lists: create tables if missing (ADD_PRICE_LISTS.sql was not always applied), then RLS with get_my_org_id().
+-- product_id matches public.products.id (uuid or integer legacy).
 
 create table if not exists public.price_lists (
   id uuid primary key default gen_random_uuid(),
@@ -40,7 +34,8 @@ begin
   end if;
 
   execute format(
-    'create table if not exists public.price_list_items (
+    $ddl$
+    create table if not exists public.price_list_items (
       id uuid primary key default gen_random_uuid(),
       organization_id uuid not null references public.organizations(id) on delete cascade,
       price_list_id uuid not null references public.price_lists(id) on delete cascade,
@@ -51,7 +46,8 @@ begin
       created_at timestamptz default now(),
       updated_at timestamptz default now(),
       unique (organization_id, price_list_id, product_id)
-    )',
+    )
+    $ddl$,
     product_id_type
   );
 end $$;
@@ -64,27 +60,45 @@ alter table public.price_lists enable row level security;
 alter table public.price_list_items enable row level security;
 
 drop policy if exists "Users can read own org price_lists" on public.price_lists;
-create policy "Users can read own org price_lists" on public.price_lists for select
-  using (organization_id in (select organization_id from public.profiles where id = auth.uid()));
 drop policy if exists "Users can insert own org price_lists" on public.price_lists;
-create policy "Users can insert own org price_lists" on public.price_lists for insert
-  with check (organization_id in (select organization_id from public.profiles where id = auth.uid()));
 drop policy if exists "Users can update own org price_lists" on public.price_lists;
-create policy "Users can update own org price_lists" on public.price_lists for update
-  using (organization_id in (select organization_id from public.profiles where id = auth.uid()));
 drop policy if exists "Users can delete own org price_lists" on public.price_lists;
-create policy "Users can delete own org price_lists" on public.price_lists for delete
-  using (organization_id in (select organization_id from public.profiles where id = auth.uid()));
+drop policy if exists "p_read_price_lists" on public.price_lists;
+drop policy if exists "p_insert_price_lists" on public.price_lists;
+drop policy if exists "p_update_price_lists" on public.price_lists;
+drop policy if exists "p_delete_price_lists" on public.price_lists;
+
+create policy "p_read_price_lists" on public.price_lists
+  for select using (organization_id = public.get_my_org_id());
+
+create policy "p_insert_price_lists" on public.price_lists
+  for insert with check (organization_id = public.get_my_org_id());
+
+create policy "p_update_price_lists" on public.price_lists
+  for update using (organization_id = public.get_my_org_id());
+
+create policy "p_delete_price_lists" on public.price_lists
+  for delete using (organization_id = public.get_my_org_id());
 
 drop policy if exists "Users can read own org price_list_items" on public.price_list_items;
-create policy "Users can read own org price_list_items" on public.price_list_items for select
-  using (organization_id in (select organization_id from public.profiles where id = auth.uid()));
 drop policy if exists "Users can insert own org price_list_items" on public.price_list_items;
-create policy "Users can insert own org price_list_items" on public.price_list_items for insert
-  with check (organization_id in (select organization_id from public.profiles where id = auth.uid()));
 drop policy if exists "Users can update own org price_list_items" on public.price_list_items;
-create policy "Users can update own org price_list_items" on public.price_list_items for update
-  using (organization_id in (select organization_id from public.profiles where id = auth.uid()));
 drop policy if exists "Users can delete own org price_list_items" on public.price_list_items;
-create policy "Users can delete own org price_list_items" on public.price_list_items for delete
-  using (organization_id in (select organization_id from public.profiles where id = auth.uid()));
+drop policy if exists "p_read_price_list_items" on public.price_list_items;
+drop policy if exists "p_insert_price_list_items" on public.price_list_items;
+drop policy if exists "p_update_price_list_items" on public.price_list_items;
+drop policy if exists "p_delete_price_list_items" on public.price_list_items;
+
+create policy "p_read_price_list_items" on public.price_list_items
+  for select using (organization_id = public.get_my_org_id());
+
+create policy "p_insert_price_list_items" on public.price_list_items
+  for insert with check (organization_id = public.get_my_org_id());
+
+create policy "p_update_price_list_items" on public.price_list_items
+  for update using (organization_id = public.get_my_org_id());
+
+create policy "p_delete_price_list_items" on public.price_list_items
+  for delete using (organization_id = public.get_my_org_id());
+
+select pg_notify('pgrst', 'reload schema');

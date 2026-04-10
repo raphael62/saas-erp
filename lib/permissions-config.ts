@@ -87,6 +87,7 @@ export const permissionTree: PermissionNode[] = [
       { pageKey: "change-history", label: "Change history", href: "/dashboard/inventory/change-history", iconKey: "History" },
       { pageKey: "location-transfers", label: "Location Transfers", href: "/dashboard/inventory/location-transfers", iconKey: "ArrowLeftRight" },
       { pageKey: "stock-count-sheets", label: "Stock Count Sheets", href: "/dashboard/inventory/stock-count-sheets", iconKey: "ClipboardList" },
+      { pageKey: "stock-checks", label: "Stock Checks", href: "/dashboard/inventory/stock-checks", iconKey: "FileCheck" },
     ],
   },
   {

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { FileSpreadsheet, Plus, Printer, Trash2 } from "lucide-react";
@@ -74,6 +75,8 @@ type StockCountSheetsProps = {
   tableMissing?: boolean;
   /** When set, line item picker filters to products with stock at the selected location (or lines already on the sheet). */
   locationBalances?: LocationBalanceRow[];
+  /** Map stock count sheet id → persisted stock check id (after save). */
+  stockCheckIdBySheetId?: Record<string, string>;
 };
 
 export function StockCountSheets({
@@ -82,6 +85,7 @@ export function StockCountSheets({
   products = [],
   tableMissing = false,
   locationBalances = [],
+  stockCheckIdBySheetId = {},
 }: StockCountSheetsProps) {
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -166,13 +170,13 @@ export function StockCountSheets({
               <th className="border-b border-r border-border px-2 py-2 text-left font-medium">Count Date</th>
               <th className="border-b border-r border-border px-2 py-2 text-left font-medium">Location</th>
               <th className="border-b border-r border-border px-2 py-2 text-right font-medium">Items</th>
-              <th className="border-b border-border px-2 py-2 text-left font-medium">Status</th>
+              <th className="border-b border-border px-2 py-2 text-left font-medium">Stock check</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
+                <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
                   No stock count sheets found.
                 </td>
               </tr>
@@ -206,7 +210,20 @@ export function StockCountSheets({
                   <td className="border-r border-border px-2 py-1.5">
                     {locationLabel(row.location ?? { name: "—" })}
                   </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{row.lines?.length ?? 0}</td>
+                  <td className="border-r border-border px-2 py-1.5 text-right tabular-nums">{row.lines?.length ?? 0}</td>
+                  <td className="px-2 py-1.5">
+                    {stockCheckIdBySheetId[row.id] ? (
+                      <Link
+                        href={`/dashboard/inventory/stock-checks/${stockCheckIdBySheetId[row.id]}`}
+                        className="text-[var(--navbar)] hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Stock check
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                 </tr>
               ))
             )}
