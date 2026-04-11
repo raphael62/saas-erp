@@ -8,7 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { hasFullAccess } from "@/lib/roles";
 import { mainNavItems, type MainNavItemSerialized } from "@/lib/nav-items";
-import { permissionTree, getRoutePermissions } from "./permissions-config";
+import { permissionTree, getRoutePermissions, getPageKeyForNavHref } from "./permissions-config";
 
 export type PermissionAction = "view" | "create" | "edit" | "delete" | "export";
 
@@ -47,15 +47,29 @@ function mergePermissionRows(rows: RolePermission[]): Map<string, RolePermission
   return map;
 }
 
-/** Role ids from profile_roles, or legacy profiles.role_id when junction is empty. */
+/** Role ids from profile_roles for the user's current org, or legacy profiles.role_id when junction is empty. */
 export async function getEffectiveRoleIds(
   supabase: SupabaseClient,
   userId: string,
   legacyRoleId: string | null | undefined
 ): Promise<string[]> {
-  const { data: prs } = await supabase.from("profile_roles").select("role_id").eq("profile_id", userId);
-  const fromJoin = [...new Set((prs ?? []).map((r: { role_id: string }) => r.role_id))];
-  if (fromJoin.length > 0) return fromJoin;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("organization_id")
+    .eq("id", userId)
+    .maybeSingle();
+  const orgId = (profile as { organization_id?: string | null } | null)?.organization_id ?? null;
+
+  if (orgId) {
+    const { data: prs } = await supabase
+      .from("profile_roles")
+      .select("role_id")
+      .eq("profile_id", userId)
+      .eq("organization_id", orgId);
+    const fromJoin = [...new Set((prs ?? []).map((r: { role_id: string }) => r.role_id))];
+    if (fromJoin.length > 0) return fromJoin;
+  }
+
   if (legacyRoleId) return [legacyRoleId];
   return [];
 }
@@ -72,13 +86,9 @@ async function getMergedPermissionMap(roleIds: string[], orgId: string | null): 
   return mergePermissionRows(list);
 }
 
-function hasPermission(
-  perm: RolePermission | undefined,
-  action: PermissionAction,
-  isModuleLevel: boolean
-): boolean {
+function hasPermission(perm: RolePermission | undefined, action: PermissionAction): boolean {
   if (!perm) return false;
-  if (perm.is_full && isModuleLevel) return true;
+  if (perm.is_full) return true;
   switch (action) {
     case "view":
       return perm.can_view;
@@ -144,7 +154,7 @@ export async function canAccess(
   const modulePerm = permMap.get(`${moduleKey}:`);
 
   if (modulePerm?.is_full) return true;
-  if (hasPermission(perm ?? modulePerm, action, false)) return true;
+  if (hasPermission(perm ?? modulePerm, action)) return true;
   return false;
 }
 
@@ -249,8 +259,7 @@ export async function getNavForUser(
     const node = permissionTree[i];
     const moduleKey = node?.moduleKey ?? item.href.replace(/^\/dashboard\/?/, "").split("/")[0] ?? "dashboard";
     const subItems = item.subItems.filter((sub) => {
-      const pageKey =
-        sub.href === item.href || sub.href === item.href + "/" ? "overview" : sub.href.split("/").filter(Boolean).pop() ?? "overview";
+      const pageKey = getPageKeyForNavHref(moduleKey, item.href, sub.href);
       if ((pageKey === "roles-permissions" || pageKey === "users") && !canManageRoles) return false;
       return hasView(moduleKey, pageKey);
     });

@@ -97,6 +97,25 @@ function productLabel(p: Product) {
   return c ? `${c} — ${p.name}` : p.name;
 }
 
+/** Match catalog row when product_id was cleared while typing in the product field. */
+function resolveProductForLine(line: EditLine, catalog: Product[]): Product | null {
+  if (line.product_id) {
+    const byId = catalog.find((p) => String(p.id) === String(line.product_id));
+    if (byId) return byId;
+  }
+  const q = line.product_label.trim().toLowerCase();
+  if (!q) return null;
+  for (const p of catalog) {
+    if (productLabel(p).toLowerCase() === q) return p;
+  }
+  const head = q.split(/[—\-]/)[0]?.trim() ?? "";
+  for (const p of catalog) {
+    const c = String(p.code ?? "").trim().toLowerCase();
+    if (c && c === head) return p;
+  }
+  return null;
+}
+
 function n(v: string) {
   const x = Number(String(v).replace(/,/g, ""));
   return Number.isFinite(x) ? x : 0;
@@ -328,7 +347,11 @@ export function VanStockRequestList({
   }
 
   function totalQty() {
-    return editLines.reduce((s, l) => s + n(l.qty), 0);
+    const cat = requestType === "returns" ? productsForReturns : products;
+    return editLines.reduce((s, l) => {
+      if (!resolveProductForLine(l, cat)) return s;
+      return s + n(l.qty);
+    }, 0);
   }
 
   async function handleSave(submitApproval: boolean) {
@@ -343,12 +366,16 @@ export function VanStockRequestList({
     if (neededFor) fd.set("needed_for_date", neededFor);
     fd.set("request_type", requestType);
     fd.set("notes", notes);
+    const catalog = requestType === "returns" ? productsForReturns : products;
     editLines.forEach((l, i) => {
-      if (!l.product_id) return;
-      fd.set(`line_product_id_${i}`, l.product_id);
-      fd.set(`line_product_code_${i}`, l.code);
-      fd.set(`line_product_name_${i}`, l.name);
-      fd.set(`line_qty_ctn_${i}`, String(n(l.qty)));
+      const p = resolveProductForLine(l, catalog);
+      if (!p) return;
+      const qty = n(l.qty);
+      if (qty <= 0) return;
+      fd.set(`line_product_id_${i}`, String(p.id));
+      fd.set(`line_product_code_${i}`, String(p.code ?? ""));
+      fd.set(`line_product_name_${i}`, p.name);
+      fd.set(`line_qty_ctn_${i}`, String(qty));
     });
     const res = submitApproval ? await submitVanStockRequestForApproval(fd) : await saveVanStockRequest(fd);
     setSaving(false);
@@ -617,7 +644,10 @@ export function VanStockRequestList({
             <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-center">
               <div className="text-muted-foreground text-xs">Products</div>
               <div className="text-lg font-semibold">
-                {editLines.filter((l) => l.product_id).length}
+                {editLines.filter((l) => {
+                  const cat = requestType === "returns" ? productsForReturns : products;
+                  return resolveProductForLine(l, cat) && n(l.qty) > 0;
+                }).length}
               </div>
             </div>
             <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-center dark:border-sky-900 dark:bg-sky-950/40">
@@ -658,12 +688,18 @@ export function VanStockRequestList({
                               const q = e.target.value;
                               setEditLines((prev) => {
                                 const next = [...prev];
+                                const cur = next[idx];
+                                let keep = false;
+                                if (cur.product_id) {
+                                  const sel = products.find((x) => String(x.id) === cur.product_id);
+                                  if (sel && productLabel(sel) === q) keep = true;
+                                }
                                 next[idx] = {
                                   ...next[idx],
                                   product_label: q,
-                                  product_id: "",
-                                  code: "",
-                                  name: "",
+                                  product_id: keep ? cur.product_id : "",
+                                  code: keep ? cur.code : "",
+                                  name: keep ? cur.name : "",
                                 };
                                 return next;
                               });

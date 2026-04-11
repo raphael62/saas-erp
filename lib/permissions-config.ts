@@ -147,6 +147,21 @@ export const permissionTree: PermissionNode[] = [
   },
 ];
 
+/**
+ * Page key for a nav sub-link, aligned with permission matrix / role_permissions (not just URL last segment).
+ */
+export function getPageKeyForNavHref(moduleKey: string, moduleRootHref: string, subHref: string): string {
+  const normSub = subHref.replace(/\/$/, "") || "/dashboard";
+  const normRoot = moduleRootHref.replace(/\/$/, "") || "/dashboard";
+  if (normSub === normRoot || normSub === `${normRoot}/`) return "overview";
+
+  const node = permissionTree.find((n) => n.moduleKey === moduleKey);
+  const child = node?.children?.find((c) => c.href.replace(/\/$/, "") === normSub);
+  if (child) return child.pageKey;
+
+  return subHref.split("/").filter(Boolean).pop() ?? "overview";
+}
+
 /** All (moduleKey, pageKey) pairs that grant access to a route (pages can appear in multiple modules) */
 export function getRoutePermissions(pathname: string): { moduleKey: string; pageKey: string | null }[] {
   const normalized = pathname.replace(/\/$/, "") || "/dashboard";
