@@ -1,5 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { SalesOrderList } from "@/components/sales/sales-order-list";
+import {
+  getUserTransactionScope,
+  filterLocationsByScope,
+  filterSalesRepsByScope,
+} from "@/lib/user-transaction-scope";
 
 export async function SalesOrdersContent({
   orgId,
@@ -23,6 +28,9 @@ export async function SalesOrdersContent({
 
   if (!skipQueries) {
     const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     const [
       ordersRes,
       linesRes,
@@ -108,8 +116,16 @@ export async function SalesOrdersContent({
     lines = linesRes.error ? [] : linesRes.data ?? [];
     products = productsRes.error ? [] : productsRes.data ?? [];
     customers = customersRes.error ? [] : customersRes.data ?? [];
-    salesReps = repsRes.error ? [] : repsRes.data ?? [];
-    locations = locationsRes.error ? [] : locationsRes.data ?? [];
+    const repsRaw = repsRes.error ? [] : repsRes.data ?? [];
+    const locsRaw = locationsRes.error ? [] : locationsRes.data ?? [];
+    if (user?.id) {
+      const scope = await getUserTransactionScope(supabase, user.id, orgId);
+      salesReps = filterSalesRepsByScope(scope, repsRaw as Array<{ id: string; code?: string | null; name: string }>);
+      locations = filterLocationsByScope(scope, locsRaw as Array<{ id: string; code?: string | null; name: string }>);
+    } else {
+      salesReps = repsRaw;
+      locations = locsRaw;
+    }
     priceTypes = priceTypesRes.error ? [] : priceTypesRes.data ?? [];
     priceLists = priceListsRes.error ? [] : priceListsRes.data ?? [];
     priceListItems = priceListItemsRes.error ? [] : priceListItemsRes.data ?? [];

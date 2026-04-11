@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptiesReceiveList } from "@/components/sales/empties-receive-list";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import { getUserTransactionScope, filterLocationsByScope } from "@/lib/user-transaction-scope";
 
 export default async function EmptiesReceivePage({
   searchParams,
@@ -75,7 +76,9 @@ export default async function EmptiesReceivePage({
   const receives = receivesRes.error ? [] : receivesRes.data ?? [];
   const lines = linesRes.error ? [] : linesRes.data ?? [];
   const customers = customersRes.error ? [] : customersRes.data ?? [];
-  const locations = locationsRes.error ? [] : locationsRes.data ?? [];
+  const locsRaw = locationsRes.error ? [] : locationsRes.data ?? [];
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const locations = filterLocationsByScope(scope, locsRaw as Array<{ id: string; code?: string | null; name: string }>);
   const products = productsRes.error ? [] : productsRes.data ?? [];
 
   return (

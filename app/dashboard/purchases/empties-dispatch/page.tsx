@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { EmptiesDispatchList } from "@/components/purchases/empties-dispatch-list";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import { getUserTransactionScope, filterLocationsByScope } from "@/lib/user-transaction-scope";
 
 export default async function EmptiesDispatchPage({
   searchParams,
@@ -86,7 +87,9 @@ export default async function EmptiesDispatchPage({
   const dispatches = dispatchesRes.error ? [] : dispatchesRes.data ?? [];
   const lines = linesRes.error ? [] : linesRes.data ?? [];
   const suppliers = suppliersRes.error ? [] : suppliersRes.data ?? [];
-  const locations = locationsRes.error ? [] : locationsRes.data ?? [];
+  const locsRaw = locationsRes.error ? [] : locationsRes.data ?? [];
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const locations = filterLocationsByScope(scope, locsRaw as Array<{ id: string; code?: string | null; name: string }>);
   const products = productsRes.error ? [] : productsRes.data ?? [];
   const priceLists = priceListsRes.error ? [] : priceListsRes.data ?? [];
   const priceListItems = priceListItemsRes.error ? [] : priceListItemsRes.data ?? [];

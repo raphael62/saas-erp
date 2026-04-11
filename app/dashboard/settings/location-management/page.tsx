@@ -2,12 +2,18 @@ import { createClient } from "@/lib/supabase/server";
 import { LocationList } from "@/components/settings/location-list";
 import { requireOrgId } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import {
+  getUserTransactionScope,
+  filterLocationsByScope,
+  filterSalesRepsByScope,
+} from "@/lib/user-transaction-scope";
 
 export default async function LocationManagementPage() {
-  const { orgId } = await requireOrgId();
+  const { userId, orgId } = await requireOrgId();
   if (!orgId) return <NoOrgPrompt />;
 
   const supabase = await createClient();
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
   let locations: Array<{
     id: string;
     code: string;
@@ -33,7 +39,8 @@ export default async function LocationManagementPage() {
   if (locationError) {
     tableError = locationError.message;
   } else {
-    locations = (locationData ?? []) as typeof locations;
+    const locs = (locationData ?? []) as typeof locations;
+    locations = filterLocationsByScope(scope, locs) as typeof locations;
   }
 
   const { data: managersData } = await supabase
@@ -48,12 +55,15 @@ export default async function LocationManagementPage() {
     .eq("organization_id", orgId)
     .order("code");
 
-  const managers = (managersData ?? []) as Array<{
-    id: string;
-    code: string | null;
-    name: string;
-    is_active?: boolean;
-  }>;
+  const managers = filterSalesRepsByScope(
+    scope,
+    (managersData ?? []) as Array<{
+      id: string;
+      code: string | null;
+      name: string;
+      is_active?: boolean;
+    }>
+  );
 
   const locationTypes = (locationTypeData ?? []) as Array<{
     id: string;

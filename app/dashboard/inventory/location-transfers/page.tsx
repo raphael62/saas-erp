@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 import { LocationTransfers } from "@/components/inventory/location-transfers";
+import { getUserTransactionScope, filterLocationsByScope } from "@/lib/user-transaction-scope";
 
 export default async function LocationTransfersPage() {
   const supabase = await createClient();
@@ -52,7 +53,9 @@ export default async function LocationTransfersPage() {
 
   const lineRows = tableMissing ? [] : (linesRes.data ?? []);
   const transfers = tableMissing ? [] : (transfersRes.data ?? []);
-  const locations = locationsRes.error ? [] : (locationsRes.data ?? []);
+  const locsRaw = locationsRes.error ? [] : (locationsRes.data ?? []);
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const locations = filterLocationsByScope(scope, locsRaw as Array<{ id: string; code?: string | null; name: string }>);
   const products = productsRes.error ? [] : (productsRes.data ?? []);
   const linesByTransfer = new Map<string, unknown[]>();
   for (const l of lineRows as Array<{ location_transfer_id?: string }>) {

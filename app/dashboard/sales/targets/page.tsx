@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { SalesTargets } from "@/components/sales/sales-targets";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import { getUserTransactionScope, filterSalesRepsByScope } from "@/lib/user-transaction-scope";
 
 export default async function SalesTargetsPage() {
   const supabase = await createClient();
@@ -78,6 +79,19 @@ export default async function SalesTargetsPage() {
     );
   }
 
+  const repsRaw = repsRes.error ? [] : repsRes.data ?? [];
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const repsFiltered = filterSalesRepsByScope(
+    scope,
+    repsRaw as Array<{
+      id: string;
+      code?: string | null;
+      name: string;
+      sales_rep_type?: string | null;
+      is_active?: boolean | null;
+    }>
+  );
+
   const today = new Date().toISOString().slice(0, 10);
   const retailLists = (priceListsRes.data ?? [])
     .filter((pl) => {
@@ -131,7 +145,7 @@ export default async function SalesTargetsPage() {
         ssrTargets={(ssrRes.data ?? []) as unknown as Parameters<typeof SalesTargets>[0]["ssrTargets"]}
         vsrTargets={(vsrRes.data ?? []) as unknown as Parameters<typeof SalesTargets>[0]["vsrTargets"]}
         vsrLines={(vsrLinesRes.data ?? []) as unknown as Parameters<typeof SalesTargets>[0]["vsrLines"]}
-        reps={(repsRes.data ?? []) as Parameters<typeof SalesTargets>[0]["reps"]}
+        reps={repsFiltered as Parameters<typeof SalesTargets>[0]["reps"]}
         products={(productsRes.data ?? []) as Parameters<typeof SalesTargets>[0]["products"]}
         customers={(customersRes.data ?? []) as Parameters<typeof SalesTargets>[0]["customers"]}
         priceLists={(priceListsRes.data ?? []) as Parameters<typeof SalesTargets>[0]["priceLists"]}

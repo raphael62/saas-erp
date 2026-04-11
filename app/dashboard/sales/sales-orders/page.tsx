@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { SalesOrderList } from "@/components/sales/sales-order-list";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import {
+  getUserTransactionScope,
+  filterLocationsByScope,
+  filterSalesRepsByScope,
+} from "@/lib/user-transaction-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -101,8 +106,11 @@ export default async function SalesOrdersPage({
   const products = productsRes.error ? [] : productsRes.data ?? [];
   const customers = customersRes.error ? [] : customersRes.data ?? [];
   const customersError = customersRes.error ? String(customersRes.error.message) : null;
-  const salesReps = repsRes.error ? [] : repsRes.data ?? [];
-  const locations = locationsRes.error ? [] : locationsRes.data ?? [];
+  const repsRaw = repsRes.error ? [] : repsRes.data ?? [];
+  const locsRaw = locationsRes.error ? [] : locationsRes.data ?? [];
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const salesReps = filterSalesRepsByScope(scope, repsRaw as Array<{ id: string; code?: string | null; name: string }>);
+  const locations = filterLocationsByScope(scope, locsRaw as Array<{ id: string; code?: string | null; name: string }>);
   const priceTypes = priceTypesRes.error ? [] : priceTypesRes.data ?? [];
   const priceLists = priceListsRes.error ? [] : priceListsRes.data ?? [];
   const priceListItems = priceListItemsRes.error ? [] : priceListItemsRes.data ?? [];

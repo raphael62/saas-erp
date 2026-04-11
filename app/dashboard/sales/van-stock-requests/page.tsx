@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { VanStockRequestList } from "@/components/sales/van-stock-request-list";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import {
+  getUserTransactionScope,
+  filterLocationsByScope,
+  filterSalesRepsByScope,
+} from "@/lib/user-transaction-scope";
 
 export default async function VanStockRequestsPage({
   searchParams,
@@ -83,8 +88,11 @@ export default async function VanStockRequestsPage({
 
   const requests = reqRes.error ? [] : reqRes.data ?? [];
   const lines = linesRes.error ? [] : linesRes.data ?? [];
-  const reps = repsRes.error ? [] : repsRes.data ?? [];
-  const locations = locationsRes.error ? [] : locationsRes.data ?? [];
+  const repsRaw = repsRes.error ? [] : repsRes.data ?? [];
+  const locsRaw = locationsRes.error ? [] : locationsRes.data ?? [];
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const reps = filterSalesRepsByScope(scope, repsRaw as Array<{ id: string; code?: string | null; name: string }>);
+  const locations = filterLocationsByScope(scope, locsRaw as Array<{ id: string; code?: string | null; name: string }>);
   const products = productsRes.error ? [] : productsRes.data ?? [];
   const loadOutSheets = loadOutSheetsRes.error ? [] : loadOutSheetsRes.data ?? [];
   const loadOutLines = loadOutLinesRes.error ? [] : loadOutLinesRes.data ?? [];

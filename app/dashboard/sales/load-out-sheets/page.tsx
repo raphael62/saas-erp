@@ -4,6 +4,11 @@ import { createClient } from "@/lib/supabase/server";
 import { LoadOutSheetList } from "@/components/sales/load-out-sheet-list";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import {
+  getUserTransactionScope,
+  filterLocationsByScope,
+  filterSalesRepsByScope,
+} from "@/lib/user-transaction-scope";
 
 export default async function LoadOutSheetsPage({
   searchParams,
@@ -97,8 +102,11 @@ export default async function LoadOutSheetsPage({
 
   const sheets = sheetsRes.error ? [] : sheetsRes.data ?? [];
   const lines = linesRes.error ? [] : linesRes.data ?? [];
-  const reps = repsRes.error ? [] : repsRes.data ?? [];
-  const locations = locationsRes.error ? [] : locationsRes.data ?? [];
+  const repsRaw = repsRes.error ? [] : repsRes.data ?? [];
+  const locsRaw = locationsRes.error ? [] : locationsRes.data ?? [];
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const reps = filterSalesRepsByScope(scope, repsRaw as Array<{ id: string; code?: string | null; name: string }>);
+  const locations = filterLocationsByScope(scope, locsRaw as Array<{ id: string; code?: string | null; name: string }>);
   const vsrTargets = vsrRes.error ? [] : vsrRes.data ?? [];
   const vsrLines = vsrLinesRes.error ? [] : vsrLinesRes.data ?? [];
   const priceLists = priceListsRes.error ? [] : priceListsRes.data ?? [];

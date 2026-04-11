@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 import { StockCountSheets } from "@/components/inventory/stock-count-sheets";
+import { getUserTransactionScope, filterLocationsByScope } from "@/lib/user-transaction-scope";
 
 export default async function StockCountSheetsPage() {
   const supabase = await createClient();
@@ -55,9 +56,17 @@ export default async function StockCountSheetsPage() {
 
   const lineRows = tableMissing ? [] : (linesRes.data ?? []);
   const sheets = tableMissing ? [] : (sheetsRes.data ?? []);
-  const locations = locationsRes.error ? [] : (locationsRes.data ?? []);
+  const locsRaw = locationsRes.error ? [] : (locationsRes.data ?? []);
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const locations = filterLocationsByScope(scope, locsRaw as Array<{ id: string; code?: string | null; name: string }>);
   const products = productsRes.error ? [] : (productsRes.data ?? []);
-  const locationBalances = balancesRes.error ? [] : (balancesRes.data ?? []);
+  const balancesRaw = balancesRes.error ? [] : (balancesRes.data ?? []);
+  const locationBalances =
+    scope.unrestricted || !scope.restrictByLocation
+      ? balancesRaw
+      : (balancesRaw as Array<{ location_id?: string }>).filter((b) =>
+          scope.allowedLocationIds.includes(String(b.location_id ?? ""))
+        );
   const stockCheckIdBySheetId: Record<string, string> = {};
   if (!stockChecksRes.error && stockChecksRes.data) {
     for (const sc of stockChecksRes.data as Array<{ id?: string; stock_count_sheet_id?: string }>) {

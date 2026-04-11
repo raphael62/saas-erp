@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 import { StockByLocationView } from "@/components/inventory/stock-by-location-view";
+import { getUserTransactionScope, filterLocationsByScope } from "@/lib/user-transaction-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -79,12 +80,15 @@ export default async function StockByLocationPage() {
   const categoryOptions = uniqSorted(productRows.map((r) => r.category));
   const emptiesTypeOptions = uniqSorted(productRows.map((r) => r.empties_type));
 
-  const locations = ((locationsRes.data ?? []) as Array<{
+  const locsRaw = (locationsRes.data ?? []) as Array<{
     id: string;
     code: string;
     name: string;
     is_active?: boolean | null;
-  }>).map((l) => ({ ...l, id: String(l.id) }));
+  }>;
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const locationsFiltered = filterLocationsByScope(scope, locsRaw.map((l) => ({ ...l, id: String(l.id) })));
+  const locations = locationsFiltered.map((l) => ({ ...l, id: String(l.id) }));
 
   const balancesTableMissing = Boolean(
     balancesRes.error &&
@@ -97,7 +101,7 @@ export default async function StockByLocationPage() {
     .map((e) => e.message)
     .join(" · ") || null;
 
-  const balances = balancesTableMissing
+  const balancesRaw = balancesTableMissing
     ? []
     : ((balancesRes.data ?? []) as Array<{
         product_id: string;
@@ -108,6 +112,10 @@ export default async function StockByLocationPage() {
         location_id: String(b.location_id),
         quantity: Number(b.quantity ?? 0),
       }));
+  const balances =
+    balancesTableMissing || scope.unrestricted || !scope.restrictByLocation
+      ? balancesRaw
+      : balancesRaw.filter((b) => scope.allowedLocationIds.includes(b.location_id));
 
   return (
     <StockByLocationView

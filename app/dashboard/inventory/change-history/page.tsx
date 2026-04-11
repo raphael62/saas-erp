@@ -6,6 +6,7 @@ import { ChangeHistoryView } from "@/components/inventory/change-history-view";
 import { getInventoryChangeHistory } from "./actions";
 import { ITEM_CATEGORY_PRESET_LABELS } from "@/lib/inventory-change-history-presets";
 import { decodeCsvTerms, parseIdList } from "@/lib/change-history-url-params";
+import { getUserTransactionScope, filterLocationsByScope } from "@/lib/user-transaction-scope";
 
 export const dynamic = "force-dynamic";
 
@@ -63,10 +64,16 @@ export default async function ChangeHistoryPage({
   const itemCat = parseItemCat(params.item_cat);
   const individualLocation = params.individual_location === "1";
 
-  const locationIds = parseIdList(
+  const locationIdsRaw = parseIdList(
     typeof params.location_ids === "string" ? params.location_ids : params.location_id
   );
   const itemIds = parseIdList(typeof params.item_ids === "string" ? params.item_ids : undefined);
+
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const locationIds =
+    !scope.unrestricted && scope.restrictByLocation && locationIdsRaw.length > 0
+      ? locationIdsRaw.filter((id) => scope.allowedLocationIds.includes(id))
+      : locationIdsRaw;
 
   const brandTerms = [...decodeCsvTerms(brandQRaw), ...decodeCsvTerms(categoryQ)].filter(
     (v, i, a) => a.indexOf(v) === i
@@ -135,7 +142,15 @@ export default async function ChangeHistoryPage({
         emptiesTerms={emptiesTerms}
         organizationName={organizationName}
         locations={
-          (locationRows ?? []) as Array<{
+          filterLocationsByScope(
+            scope,
+            ((locationRows ?? []) as Array<{
+              id: string;
+              code: string;
+              name: string;
+              is_active?: boolean | null;
+            }>).map((r) => ({ ...r, id: String(r.id) }))
+          ) as Array<{
             id: string;
             code: string;
             name: string;

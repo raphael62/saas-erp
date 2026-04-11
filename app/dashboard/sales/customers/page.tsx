@@ -2,9 +2,10 @@ import { createClient } from "@/lib/supabase/server";
 import { CustomerList } from "@/components/sales/customer-list";
 import { requireOrgId } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import { getUserTransactionScope, filterSalesRepsByScope } from "@/lib/user-transaction-scope";
 
 export default async function CustomersPage() {
-  const { orgId } = await requireOrgId();
+  const { userId, orgId } = await requireOrgId();
   if (!orgId) return <NoOrgPrompt />;
 
   const supabase = await createClient();
@@ -20,7 +21,9 @@ export default async function CustomersPage() {
     .eq("organization_id", orgId)
     .eq("is_active", true)
     .order("name");
-  const salesReps = salesRepsRes.error ? [] : (salesRepsRes.data ?? []);
+  const repsRaw = salesRepsRes.error ? [] : (salesRepsRes.data ?? []);
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+  const salesReps = filterSalesRepsByScope(scope, repsRaw as Array<{ id: string; name: string }>);
 
   const customerTypesRes = await supabase
     .from("customer_types")

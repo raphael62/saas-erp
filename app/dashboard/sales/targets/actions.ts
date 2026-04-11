@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { parseCsv } from "@/lib/csv";
 import { gateSalesPageAnyAction, gateSalesPageAction } from "@/lib/mutation-gate";
+import { getUserTransactionScope, filterSalesRepsByScope } from "@/lib/user-transaction-scope";
 
 function parseNum(v: FormDataEntryValue | null) {
   const raw = String(v ?? "").replace(/,/g, "").trim();
@@ -219,7 +220,7 @@ function lower(v: string) {
 export async function importSSRMonthlyTargetsCsv(formData: FormData) {
   const gate = await gateSalesPageAnyAction("targets", ["create", "edit"]);
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };
@@ -227,7 +228,9 @@ export async function importSSRMonthlyTargetsCsv(formData: FormData) {
   if (rows.length === 0) return { error: "CSV has no data rows" };
 
   const repsRes = await supabase.from("sales_reps").select("id, code, name").eq("organization_id", orgId);
-  const reps = repsRes.error ? [] : repsRes.data ?? [];
+  const repsRaw = repsRes.error ? [] : repsRes.data ?? [];
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+  const reps = filterSalesRepsByScope(scope, repsRaw as Array<{ id: string; code?: string | null; name?: string | null }>);
 
   const repById = new Map<string, string>();
   const repByCode = new Map<string, string>();
@@ -275,7 +278,7 @@ export async function importSSRMonthlyTargetsCsv(formData: FormData) {
 export async function importVSRMonthlyTargetsCsv(formData: FormData) {
   const gate = await gateSalesPageAnyAction("targets", ["create", "edit"]);
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };
@@ -283,7 +286,9 @@ export async function importVSRMonthlyTargetsCsv(formData: FormData) {
   if (rows.length === 0) return { error: "CSV has no data rows" };
 
   const repsRes = await supabase.from("sales_reps").select("id, code, name").eq("organization_id", orgId);
-  const reps = repsRes.error ? [] : repsRes.data ?? [];
+  const repsRaw = repsRes.error ? [] : repsRes.data ?? [];
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+  const reps = filterSalesRepsByScope(scope, repsRaw as Array<{ id: string; code?: string | null; name?: string | null }>);
   const productsRes = await supabase.from("products").select("id, code, name").eq("organization_id", orgId);
   const products = productsRes.error ? [] : productsRes.data ?? [];
 

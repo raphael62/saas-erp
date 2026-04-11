@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { parseBool, parseCsv, parseNumber } from "@/lib/csv";
 import { gateSalesPageAnyAction, gateSalesPageAction } from "@/lib/mutation-gate";
+import { getUserTransactionScope, filterSalesRepsByScope } from "@/lib/user-transaction-scope";
 
 export async function addCustomer(formData: FormData) {
   const gate = await gateSalesPageAction("customers", "create");
@@ -105,7 +106,7 @@ export async function deleteCustomer(id: string) {
 export async function importCustomersCsv(formData: FormData) {
   const gate = await gateSalesPageAnyAction("customers", ["create", "edit"]);
   if (!gate.ok) return { error: gate.error };
-  const { orgId, supabase } = gate;
+  const { orgId, supabase, userId } = gate;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };
@@ -117,7 +118,9 @@ export async function importCustomersCsv(formData: FormData) {
     .from("sales_reps")
     .select("id, name, code")
     .eq("organization_id", orgId);
-  const repRows = repsRes.error ? [] : (repsRes.data ?? []);
+  const repRowsRaw = repsRes.error ? [] : (repsRes.data ?? []);
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+  const repRows = filterSalesRepsByScope(scope, repRowsRaw as Array<{ id: string; name?: string | null; code?: string | null }>);
   const repByLookup = new Map<string, string>();
   for (const rep of repRows as Array<{ id: string; name?: string | null; code?: string | null }>) {
     if (rep.name) repByLookup.set(rep.name.toLowerCase(), rep.id);

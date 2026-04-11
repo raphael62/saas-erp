@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PromotionList } from "@/components/sales/promotion-list";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import { getUserTransactionScope, filterLocationsByScope } from "@/lib/user-transaction-scope";
 
 export default async function PromotionsPage() {
   const supabase = await createClient();
@@ -65,13 +66,17 @@ export default async function PromotionsPage() {
     );
   }
 
+  const locsRaw = locationsRes.error ? [] : locationsRes.data ?? [];
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const locationsFiltered = filterLocationsByScope(scope, locsRaw as Array<{ id: string; code?: string | null; name: string }>);
+
   return (
     <PromotionList
       promotions={(promotionsRes.error ? [] : promotionsRes.data ?? []) as Parameters<typeof PromotionList>[0]["promotions"]}
       rules={(rulesRes.error ? [] : rulesRes.data ?? []) as Parameters<typeof PromotionList>[0]["rules"]}
       products={(productsRes.error ? [] : productsRes.data ?? []) as Parameters<typeof PromotionList>[0]["products"]}
       priceTypes={(priceTypesRes.error ? [] : priceTypesRes.data ?? []) as Parameters<typeof PromotionList>[0]["priceTypes"]}
-      locations={(locationsRes.error ? [] : locationsRes.data ?? []) as Parameters<typeof PromotionList>[0]["locations"]}
+      locations={locationsFiltered as Parameters<typeof PromotionList>[0]["locations"]}
     />
   );
 }
