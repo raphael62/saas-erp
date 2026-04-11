@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { deletePromotion } from "@/app/dashboard/sales/promotions/actions";
 import { PromotionFormDialog, type Promotion, type PromotionRule } from "@/components/sales/promotion-form-dialog";
 import { useRouter } from "next/navigation";
+import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
 
 type Product = {
   id: string;
@@ -36,6 +37,7 @@ export function PromotionList({
   locations: LookupItem[];
 }) {
   const router = useRouter();
+  const caps = useSalesCapabilities();
   const [pending, startTransition] = useTransition();
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
@@ -153,7 +155,7 @@ export function PromotionList({
                       type="button"
                       className="inline-flex h-8 w-8 items-center justify-center rounded text-red-600 hover:bg-red-50"
                       onClick={() => handleDelete(item.id)}
-                      disabled={pending}
+                      disabled={pending || caps.loading || !caps.canDelete}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -169,6 +171,7 @@ export function PromotionList({
         <Button
           variant="outline"
           size="sm"
+          disabled={caps.loading || !caps.canCreate}
           style={{ color: "var(--navbar)", borderColor: "var(--navbar)" }}
           onClick={() => {
             setEditingPromotionId(null);

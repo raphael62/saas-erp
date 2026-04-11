@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { deleteSalesOrder } from "@/app/dashboard/sales/sales-orders/actions";
 import { SalesOrderFormDialog } from "@/components/sales/sales-order-form-dialog";
+import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
 
 type Order = {
   id: string;
@@ -94,6 +95,7 @@ export function SalesOrderList({
   const priceLists = priceListsProp;
   const priceListItems = priceListItemsProp;
   const invoices = invoicesProp;
+  const caps = useSalesCapabilities();
 
   useEffect(() => {
     if (initialEditId) setShowForm(true);
@@ -115,6 +117,7 @@ export function SalesOrderList({
         <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
+            disabled={caps.loading || !caps.canCreate}
             onClick={() => {
               setEditingId(null);
               setShowForm(true);
@@ -157,10 +160,11 @@ export function SalesOrderList({
                   <td className="border-r border-border px-3 py-2 text-right tabular-nums">{formatMoney(order.grand_total)}</td>
                   <td className="border-border px-3 py-2">
                     <div className="flex justify-center gap-1">
-                      <Button
+                                           <Button
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0"
+                        disabled={caps.loading || !caps.canEdit}
                         onClick={() => {
                           setEditingId(order.id);
                           setShowForm(true);
@@ -172,6 +176,7 @@ export function SalesOrderList({
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                        disabled={caps.loading || !caps.canDelete}
                         onClick={() => handleDelete(order.id)}
                       >
                         <Trash2 className="h-4 w-4" />

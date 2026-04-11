@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { reassignInventoryDeltaFromDefaultLocation } from "@/lib/inventory-location-balances";
+import { gateSalesPageAction } from "@/lib/mutation-gate";
 
 type InvoiceLineInput = {
   row_no: number;
@@ -20,15 +21,6 @@ type InvoiceLineInput = {
   value_tax_inc: number;
   vat_type: "inc" | "exc";
 };
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, user: null, orgId: null as string | null, error: ctx.error };
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  return { supabase, user: user ?? null, orgId: ctx.orgId, error: null as string | null };
-}
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0) {
   const raw = String(value ?? "").replace(/,/g, "").trim();
@@ -245,8 +237,9 @@ async function generateInvoiceNo(
 }
 
 export async function getSuggestedInvoiceNo(deliveryDateInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("sales-invoices", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const datePrefix = String(deliveryDateInput || "").trim().slice(0, 10);
   if (!datePrefix || !/^\d{4}-\d{2}-\d{2}$/.test(datePrefix)) {
@@ -258,10 +251,10 @@ export async function getSuggestedInvoiceNo(deliveryDateInput: string) {
 }
 
 export async function saveSalesInvoice(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(formData.get("id") ?? "").trim() || null;
+  const gate = await gateSalesPageAction("sales-invoices", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const customerId = String(formData.get("customer_id") ?? "").trim() || null;
   const salesRepId = String(formData.get("sales_rep_id") ?? "").trim() || null;
   const locationId = String(formData.get("location_id") ?? "").trim() || null;
@@ -421,8 +414,9 @@ export async function saveSalesInvoice(formData: FormData) {
 }
 
 export async function deleteSalesInvoice(id: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("sales-invoices", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const invoiceId = String(id ?? "").trim();
   if (!invoiceId) return { error: "Missing invoice id." };
@@ -481,5 +475,7 @@ export async function deleteSalesInvoice(id: string) {
 
 export async function postSalesInvoice(id: string) {
   void id;
+  const gate = await gateSalesPageAction("sales-invoices", "edit");
+  if (!gate.ok) return { error: gate.error };
   return { error: "Posting is not used. Saving Sales Invoice already updates stock and balances." };
 }

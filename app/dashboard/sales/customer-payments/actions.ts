@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isTableUnavailableError, isSchemaCacheError } from "@/lib/supabase/table-missing";
+import { gateCustomerPaymentsAction } from "@/lib/mutation-gate";
 
 const SCHEMA_CACHE_MSG =
   "PostgREST schema cache is out of sync. Click 'Reload schema' then try again.";
@@ -38,13 +39,6 @@ function clamp2(value: number) {
   return Number(value.toFixed(2));
 }
 
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
-
 async function generatePaymentNo(supabase: Awaited<ReturnType<typeof createClient>>, orgId: string, dateIso: string) {
   const prefix = normalizeDate(dateIso) || new Date().toISOString().slice(0, 10);
   const like = `${prefix}-%`;
@@ -63,8 +57,9 @@ async function generatePaymentNo(supabase: Awaited<ReturnType<typeof createClien
 }
 
 export async function getSuggestedPaymentNo(paymentDateInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateCustomerPaymentsAction("view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const paymentDate = normalizeDate(paymentDateInput);
   if (!paymentDate) return { error: "Transaction Date is required." };
@@ -74,8 +69,9 @@ export async function getSuggestedPaymentNo(paymentDateInput: string) {
 }
 
 export async function getCustomerOutstanding(customerIdInput: string, asOfDateInput: string, excludePaymentIdInput?: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateCustomerPaymentsAction("view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const customerId = String(customerIdInput ?? "").trim();
   const asOfDate = normalizeDate(asOfDateInput);
@@ -115,10 +111,10 @@ export async function getCustomerOutstanding(customerIdInput: string, asOfDateIn
 }
 
 export async function saveCustomerPayment(input: SavePaymentInput) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(input.id ?? "").trim();
+  const gate = await gateCustomerPaymentsAction(id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const customer_id = String(input.customer_id ?? "").trim();
   const payment_date = normalizeDate(input.payment_date);
   const bank_date = normalizeDate(input.bank_date || input.payment_date);
@@ -172,8 +168,9 @@ export async function saveCustomerPayment(input: SavePaymentInput) {
 }
 
 export async function saveBatchCustomerPayments(rowsInput: BatchPaymentRowInput[]) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateCustomerPaymentsAction("create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const rows = (rowsInput ?? [])
     .map((row) => ({
@@ -213,8 +210,9 @@ export async function saveBatchCustomerPayments(rowsInput: BatchPaymentRowInput[
 }
 
 export async function deleteCustomerPayment(idInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateCustomerPaymentsAction("delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const id = String(idInput ?? "").trim();
   if (!id) return { error: "Payment ID is required." };

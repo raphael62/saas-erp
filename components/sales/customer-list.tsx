@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, ChevronUp, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { CustomerFormDialog } from "@/components/sales/customer-form-dialog";
+import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
 
 type Customer = {
   id: string;
@@ -48,6 +49,7 @@ export function CustomerList({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortCol, setSortCol] = useState<keyof Customer>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const caps = useSalesCapabilities();
 
   useEffect(() => {
     if (searchParams.get("add") === "1") setShowForm(true);
@@ -153,6 +155,9 @@ export function CustomerList({
   const formatValue = (customer: Customer, key: keyof Customer) => {
     if (key === "tax_id" || key === "name") {
       const text = key === "tax_id" ? customer.tax_id ?? "—" : customer.name;
+      if (caps.loading || !caps.canEdit) {
+        return <span>{text}</span>;
+      }
       return (
         <button
           type="button"
@@ -352,6 +357,7 @@ export function CustomerList({
         <Button
           variant="outline"
           size="sm"
+          disabled={caps.loading || !caps.canCreate}
           onClick={() => {
             setEditingCustomer(null);
             setShowForm(true);
@@ -364,7 +370,7 @@ export function CustomerList({
         <Button
           variant="outline"
           size="sm"
-          disabled={!selectedCustomer}
+          disabled={!selectedCustomer || caps.loading || !caps.canEdit}
           onClick={() => {
             if (!selectedCustomer) return;
             setEditingCustomer(selectedCustomer);

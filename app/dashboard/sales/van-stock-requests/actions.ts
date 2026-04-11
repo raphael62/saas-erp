@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { applyApprovedStockRequestToLoadOut } from "@/app/dashboard/sales/load-out-sheets/actions";
+import { gateSalesPageAction } from "@/lib/mutation-gate";
 
 type LineInput = {
   row_no: number;
@@ -11,13 +12,6 @@ type LineInput = {
   product_name_snapshot: string | null;
   qty_ctn: number;
 };
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, userId: ctx.userId ?? null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, userId: ctx.userId, error: null as string | null };
-}
 
 function parseNum(v: FormDataEntryValue | null) {
   const raw = String(v ?? "").replace(/,/g, "").trim();
@@ -73,17 +67,17 @@ async function nextRequestNo(supabase: Awaited<ReturnType<typeof createClient>>,
 }
 
 export async function getSuggestedVanStockRequestNo() {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-  const requestNo = await nextRequestNo(supabase, orgId);
+  const gate = await gateSalesPageAction("van-stock-requests", "view");
+  if (!gate.ok) return { error: gate.error };
+  const requestNo = await nextRequestNo(gate.supabase, gate.orgId);
   return { ok: true, requestNo };
 }
 
 export async function saveVanStockRequest(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(formData.get("id") ?? "").trim() || null;
+  const gate = await gateSalesPageAction("van-stock-requests", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const salesRepId = String(formData.get("sales_rep_id") ?? "").trim() || null;
   const locationId = String(formData.get("location_id") ?? "").trim() || null;
   const requestDate = String(formData.get("request_date") ?? "").trim();
@@ -172,8 +166,9 @@ export async function submitVanStockRequestForApproval(formData: FormData) {
   const id = "id" in save ? save.id : null;
   if (!id) return { error: "Save failed." };
 
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("van-stock-requests", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { error: upErr } = await supabase
     .from("van_stock_requests")
@@ -193,8 +188,9 @@ export async function setVanStockRequestStatus(
   requestId: string,
   status: "approved" | "rejected"
 ) {
-  const { supabase, orgId, userId, error } = await getOrgContext();
-  if (error || !orgId || !userId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("van-stock-requests", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId, userId } = gate;
 
   const { error: upErr } = await supabase
     .from("van_stock_requests")
@@ -222,8 +218,9 @@ export async function setVanStockRequestStatus(
 }
 
 export async function deleteVanStockRequest(requestId: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("van-stock-requests", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { data: row } = await supabase
     .from("van_stock_requests")

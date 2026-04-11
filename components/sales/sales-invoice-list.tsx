@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { deleteSalesInvoice } from "@/app/dashboard/sales/sales-invoices/actions";
 import { SalesInvoiceFormDialog } from "@/components/sales/sales-invoice-form-dialog";
+import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
 
 type Invoice = {
   id: string;
@@ -228,6 +229,7 @@ export function SalesInvoiceList({
   editId?: string;
 }) {
   const router = useRouter();
+  const caps = useSalesCapabilities();
   const openEditId = editId && invoices.some((inv) => inv.id === editId) ? editId : null;
 
   const [search, setSearch] = useState("");
@@ -465,6 +467,8 @@ export function SalesInvoiceList({
                                 POS
                               </span>
                             </span>
+                          ) : caps.loading || !caps.canEdit ? (
+                            <span>{row.invoice_no}</span>
                           ) : (
                             <button
                               type="button"
@@ -515,6 +519,7 @@ export function SalesInvoiceList({
               size="sm"
               style={{ backgroundColor: "var(--navbar)" }}
               className="text-white"
+              disabled={caps.loading || !caps.canCreate}
               onClick={() => {
                 setEditingId(null);
                 setShowForm(true);
@@ -523,7 +528,12 @@ export function SalesInvoiceList({
               <Plus className="h-4 w-4" />
               New (F2)
             </Button>
-            <Button size="sm" variant="outline" disabled={!selected} onClick={handleDelete}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!selected || caps.loading || !caps.canDelete}
+              onClick={handleDelete}
+            >
               <Trash2 className="h-4 w-4" />
               Delete
             </Button>

@@ -1,8 +1,8 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { parseBool, parseCsv } from "@/lib/csv";
+import { gateSalesPageAnyAction, gateSalesPageAction } from "@/lib/mutation-gate";
 
 function mapSalesRepError(message: string) {
   const m = message.toLowerCase();
@@ -13,10 +13,9 @@ function mapSalesRepError(message: string) {
 }
 
 export async function addSalesRep(formData: FormData) {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateSalesPageAction("sales-reps", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const code = (formData.get("code") as string) || null;
   const firstName = ((formData.get("first_name") as string) || "").trim();
@@ -50,9 +49,9 @@ export async function addSalesRep(formData: FormData) {
 }
 
 export async function updateSalesRep(id: string, formData: FormData) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
+  const gate = await gateSalesPageAction("sales-reps", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const firstName = ((formData.get("first_name") as string) || "").trim();
   const lastName = ((formData.get("last_name") as string) || "").trim();
@@ -88,10 +87,9 @@ export async function updateSalesRep(id: string, formData: FormData) {
 }
 
 export async function importSalesRepsCsv(formData: FormData) {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateSalesPageAnyAction("sales-reps", ["create", "edit"]);
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };

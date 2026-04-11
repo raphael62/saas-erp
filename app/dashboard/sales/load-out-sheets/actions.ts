@@ -3,13 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { countMonthDaysExcludingSundays } from "@/lib/month-working-days";
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
+import { gateSalesAnyPageAction, gateSalesPageAction, gateSalesPageAnyAction } from "@/lib/mutation-gate";
 
 function parseNum(v: FormDataEntryValue | null) {
   const raw = String(v ?? "").replace(/,/g, "").trim();
@@ -266,8 +260,9 @@ async function syncLoadOutHeaderFromVsr(
 }
 
 export async function syncLoadOutLinesFromRequests(sheetId: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAnyAction("load-out-sheets", ["create", "edit"]);
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { data: sheet } = await supabase
     .from("load_out_sheets")
@@ -425,8 +420,12 @@ export async function syncLoadOutLinesFromRequests(sheetId: string) {
 }
 
 export async function applyApprovedStockRequestToLoadOut(requestId: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesAnyPageAction([
+    { pageKey: "load-out-sheets", action: "edit" },
+    { pageKey: "van-stock-requests", action: "edit" },
+  ]);
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { data: req } = await supabase
     .from("van_stock_requests")
@@ -626,10 +625,10 @@ export async function applyApprovedStockRequestToLoadOut(requestId: string) {
 }
 
 export async function saveLoadOutSheet(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(formData.get("id") ?? "").trim() || null;
+  const gate = await gateSalesPageAction("load-out-sheets", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const salesRepId = String(formData.get("sales_rep_id") ?? "").trim() || null;
   const locationId = String(formData.get("location_id") ?? "").trim() || null;
   const salesDate = String(formData.get("sales_date") ?? "").trim();
@@ -794,8 +793,9 @@ export async function saveLoadOutSheet(formData: FormData) {
 }
 
 export async function submitLoadOutSheet(sheetId: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("load-out-sheets", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { data: lines } = await supabase
     .from("load_out_sheet_lines")
@@ -818,8 +818,9 @@ export async function submitLoadOutSheet(sheetId: string) {
 }
 
 export async function deleteLoadOutSheet(sheetId: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("load-out-sheets", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { data: row } = await supabase
     .from("load_out_sheets")

@@ -11,6 +11,7 @@ import {
   saveBatchCustomerPayments,
   saveCustomerPayment,
 } from "@/app/dashboard/sales/customer-payments/actions";
+import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
 
 type Customer = {
   id: string;
@@ -106,6 +107,7 @@ export function CustomerPayments({
   schemaCacheStale?: boolean;
   editId?: string;
 }) {
+  const caps = useSalesCapabilities();
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -160,13 +162,19 @@ export function CustomerPayments({
               <p className="text-sm text-muted-foreground">Record money received from customers.</p>
             </div>
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => setShowBatch(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={caps.loading || !caps.canCreate}
+                onClick={() => setShowBatch(true)}
+              >
                 Batch Payment
               </Button>
               <Button
                 size="sm"
                 style={{ backgroundColor: "var(--navbar)" }}
                 className="text-white"
+                disabled={caps.loading || !caps.canCreate}
                 onClick={() => {
                   setEditingId(null);
                   setShowSingle(true);
@@ -273,17 +281,21 @@ export function CustomerPayments({
                     >
                       <td className="border-r border-border px-2 py-1.5 text-sm">{idx + 1}</td>
                       <td className="border-r border-border px-2 py-1.5 text-sm">
-                        <button
-                          type="button"
-                          className="text-sm text-[var(--navbar)] hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingId(row.id);
-                            setShowSingle(true);
-                          }}
-                        >
-                          {row.payment_no}
-                        </button>
+                        {caps.loading || !caps.canEdit ? (
+                          <span>{row.payment_no}</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-sm text-[var(--navbar)] hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingId(row.id);
+                              setShowSingle(true);
+                            }}
+                          >
+                            {row.payment_no}
+                          </button>
+                        )}
                       </td>
                       <td className="border-r border-border px-2 py-1.5 text-sm">{row.payment_date}</td>
                       <td className="border-r border-border px-2 py-1.5 text-sm">{row.customers?.name ?? "—"}</td>
@@ -301,6 +313,7 @@ export function CustomerPayments({
               size="sm"
               style={{ backgroundColor: "var(--navbar)" }}
               className="text-white"
+              disabled={caps.loading || !caps.canCreate}
               onClick={() => {
                 setEditingId(null);
                 setShowSingle(true);
@@ -309,10 +322,20 @@ export function CustomerPayments({
               <Plus className="h-4 w-4" />
               New
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setShowBatch(true)}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={caps.loading || !caps.canCreate}
+              onClick={() => setShowBatch(true)}
+            >
               Batch Payment
             </Button>
-            <Button size="sm" variant="outline" disabled={!selected} onClick={handleDelete}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!selected || caps.loading || !caps.canDelete}
+              onClick={handleDelete}
+            >
               <Trash2 className="h-4 w-4" />
               Delete
             </Button>

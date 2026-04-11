@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { gateSalesPageAction } from "@/lib/mutation-gate";
 
 type OrderLineInput = {
   row_no: number;
@@ -18,13 +19,6 @@ type OrderLineInput = {
   value_tax_inc: number;
   vat_type: "inc" | "exc";
 };
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0) {
   const raw = String(value ?? "").replace(/,/g, "").trim();
@@ -105,8 +99,9 @@ async function generateOrderNo(supabase: Awaited<ReturnType<typeof createClient>
 }
 
 export async function getSuggestedOrderNo(orderDateInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("sales-orders", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const datePrefix = String(orderDateInput || "").trim().slice(0, 10);
   if (!datePrefix || !/^\d{4}-\d{2}-\d{2}$/.test(datePrefix)) return { error: "Valid order date is required." };
   const orderNo = await generateOrderNo(supabase, orgId, datePrefix);
@@ -114,10 +109,10 @@ export async function getSuggestedOrderNo(orderDateInput: string) {
 }
 
 export async function saveSalesOrder(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(formData.get("id") ?? "").trim() || null;
+  const gate = await gateSalesPageAction("sales-orders", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const customerId = String(formData.get("customer_id") ?? "").trim() || null;
   const salesRepId = String(formData.get("sales_rep_id") ?? "").trim() || null;
   const locationId = String(formData.get("location_id") ?? "").trim() || null;
@@ -267,8 +262,9 @@ export type SalesOrdersReferenceData = {
 export async function loadSalesOrdersReferenceData(): Promise<
   { ok: true; data: SalesOrdersReferenceData } | { ok: false; error: string }
 > {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { ok: false, error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("sales-orders", "view");
+  if (!gate.ok) return { ok: false, error: gate.error };
+  const { supabase, orgId } = gate;
 
   const productsRes = await supabase
     .from("products")
@@ -339,8 +335,9 @@ export async function loadSalesOrdersReferenceData(): Promise<
 }
 
 export async function deleteSalesOrder(id: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("sales-orders", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const orderId = String(id ?? "").trim();
   if (!orderId) return { error: "Missing order id." };
   const { data: existing } = await supabase

@@ -3,13 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { parseCsv } from "@/lib/csv";
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
+import { gateSalesPageAnyAction, gateSalesPageAction } from "@/lib/mutation-gate";
 
 function parseNum(v: FormDataEntryValue | null) {
   const raw = String(v ?? "").replace(/,/g, "").trim();
@@ -43,10 +37,10 @@ function collectLineIndexes(formData: FormData) {
 }
 
 export async function saveSSRMonthlyTarget(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(formData.get("id") ?? "").trim() || null;
+  const gate = await gateSalesPageAction("targets", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const salesRepId = String(formData.get("sales_rep_id") ?? "").trim();
   const monthStart = toMonthStart(String(formData.get("month_start") ?? ""));
   const targetValue = clamp2(parseNum(formData.get("target_value")));
@@ -83,8 +77,9 @@ export async function saveSSRMonthlyTarget(formData: FormData) {
 }
 
 export async function deleteSSRMonthlyTarget(id: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("targets", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { error: delErr } = await supabase
     .from("sales_ssr_monthly_targets")
@@ -98,10 +93,10 @@ export async function deleteSSRMonthlyTarget(id: string) {
 }
 
 export async function saveVSRMonthlyTarget(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(formData.get("id") ?? "").trim() || null;
+  const gate = await gateSalesPageAction("targets", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const salesRepId = String(formData.get("sales_rep_id") ?? "").trim();
   const monthStart = toMonthStart(String(formData.get("month_start") ?? ""));
   const commissionPct = clamp4(parseNum(formData.get("commission_pct")));
@@ -186,8 +181,9 @@ export async function saveVSRMonthlyTarget(formData: FormData) {
 }
 
 export async function deleteVSRMonthlyTarget(id: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("targets", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   await supabase
     .from("sales_vsr_monthly_target_lines")
@@ -221,8 +217,9 @@ function lower(v: string) {
 }
 
 export async function importSSRMonthlyTargetsCsv(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAnyAction("targets", ["create", "edit"]);
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };
@@ -276,8 +273,9 @@ export async function importSSRMonthlyTargetsCsv(formData: FormData) {
 }
 
 export async function importVSRMonthlyTargetsCsv(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAnyAction("targets", ["create", "edit"]);
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };

@@ -20,6 +20,7 @@ import {
 } from "@/app/dashboard/sales/price-list/actions";
 import { PriceListFormDialog } from "@/components/sales/price-list-form-dialog";
 import { parseCsv, parseNumber, type CsvRow } from "@/lib/csv";
+import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
 
 type Product = {
   id: string | number;
@@ -117,6 +118,7 @@ export function PriceList({
   priceListItems: PriceListItem[];
 }) {
   const router = useRouter();
+  const caps = useSalesCapabilities();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -524,6 +526,7 @@ export function PriceList({
                         <Button
                           size="sm"
                           variant="outline"
+                          disabled={caps.loading || !caps.canEdit}
                           onClick={(e) => {
                             e.stopPropagation();
                             setEditingId(row.id);
@@ -535,6 +538,7 @@ export function PriceList({
                         <Button
                           size="sm"
                           variant="outline"
+                          disabled={caps.loading || !caps.canDelete}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDelete(row.id);
@@ -573,6 +577,7 @@ export function PriceList({
           size="sm"
           style={{ backgroundColor: "var(--navbar)" }}
           className="text-white"
+          disabled={caps.loading || !caps.canCreate}
           onClick={() => {
             setEditingId(null);
             setShowForm(true);
@@ -584,7 +589,7 @@ export function PriceList({
         <Button
           size="sm"
           variant="outline"
-          disabled={!selected}
+          disabled={!selected || caps.loading || !caps.canEdit}
           onClick={() => {
             if (!selected) return;
             setEditingId(selected.id);
@@ -597,7 +602,7 @@ export function PriceList({
         <Button
           size="sm"
           variant="outline"
-          disabled={!selected}
+          disabled={!selected || caps.loading || !caps.canDelete}
           onClick={() => selected && handleDelete(selected.id)}
         >
           <Trash2 className="h-4 w-4" />
@@ -606,6 +611,7 @@ export function PriceList({
         <Button
           size="sm"
           variant="outline"
+          disabled={caps.loading || (!caps.canCreate && !caps.canEdit)}
           onClick={() => {
             if (!selected) {
               setShowSelectWarning(true);

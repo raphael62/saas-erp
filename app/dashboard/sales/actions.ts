@@ -1,14 +1,13 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { parseBool, parseCsv, parseNumber } from "@/lib/csv";
-import { getOrgContextForAction } from "@/lib/org-context";
+import { gateSalesPageAnyAction, gateSalesPageAction } from "@/lib/mutation-gate";
 
 export async function addCustomer(formData: FormData) {
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateSalesPageAction("customers", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const name = formData.get("name") as string;
   const contactPerson = (formData.get("contact_person") as string) || null;
@@ -48,9 +47,9 @@ export async function addCustomer(formData: FormData) {
 }
 
 export async function updateCustomer(id: string, formData: FormData) {
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateSalesPageAction("customers", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const name = formData.get("name") as string;
   const contactPerson = (formData.get("contact_person") as string) || null;
@@ -93,8 +92,10 @@ export async function updateCustomer(id: string, formData: FormData) {
 }
 
 export async function deleteCustomer(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("customers").delete().eq("id", id);
+  const gate = await gateSalesPageAction("customers", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
+  const { error } = await supabase.from("customers").delete().eq("id", id).eq("organization_id", orgId);
   if (error) return { error: error.message };
   revalidatePath("/dashboard/sales/customers");
   revalidatePath("/dashboard/sales");
@@ -102,9 +103,9 @@ export async function deleteCustomer(id: string) {
 }
 
 export async function importCustomersCsv(formData: FormData) {
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateSalesPageAnyAction("customers", ["create", "edit"]);
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };

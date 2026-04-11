@@ -11,6 +11,7 @@ import {
   setVanStockRequestStatus,
   submitVanStockRequestForApproval,
 } from "@/app/dashboard/sales/van-stock-requests/actions";
+import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
 
 export type VanStockRequest = {
   id: string;
@@ -144,6 +145,7 @@ export function VanStockRequestList({
   editId?: string;
 }) {
   const router = useRouter();
+  const caps = useSalesCapabilities();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -202,6 +204,8 @@ export function VanStockRequestList({
   const editingRow = editingId ? requests.find((x) => x.id === editingId) : undefined;
   const isPending = editingRow?.status === "pending_approval";
   const canEditLines = !editingId || editingRow?.status !== "approved";
+  const canMutateRequest =
+    canEditLines && !caps.loading && (!editingId ? caps.canCreate : caps.canEdit);
 
   const linesByReq = useMemo(() => {
     const m = new Map<string, VanStockRequestLine[]>();
@@ -395,7 +399,7 @@ export function VanStockRequestList({
           <h1 className="text-xl font-semibold">Van Stock Requests</h1>
           <p className="text-muted-foreground mt-1 text-sm">Request and approve stock for van loading.</p>
         </div>
-        <Button onClick={openNew} className="gap-2">
+        <Button onClick={openNew} disabled={caps.loading || !caps.canCreate} className="gap-2">
           <Plus className="h-4 w-4" />
           New Stock Request
         </Button>
@@ -500,6 +504,7 @@ export function VanStockRequestList({
                             size="icon"
                             className="text-destructive h-8 w-8"
                             title="Delete"
+                            disabled={caps.loading || !caps.canDelete}
                             onClick={async () => {
                               if (!confirm("Delete this request?")) return;
                               const res = await deleteVanStockRequest(r.id);
@@ -547,7 +552,7 @@ export function VanStockRequestList({
               <button
                 key={t.value}
                 type="button"
-                disabled={!canEditLines}
+                disabled={!canMutateRequest}
                 onClick={() => setRequestType(t.value)}
                 className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
                   requestType === t.value
@@ -576,7 +581,7 @@ export function VanStockRequestList({
               <label className="mb-1 block text-xs font-medium">Sales rep</label>
               <select
                 required
-                disabled={!canEditLines}
+                disabled={!canMutateRequest}
                 value={salesRepId}
                 onChange={(e) => setSalesRepId(e.target.value)}
                 className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
@@ -593,7 +598,7 @@ export function VanStockRequestList({
               <label className="mb-1 block text-xs font-medium">Location</label>
               <select
                 required
-                disabled={!canEditLines}
+                disabled={!canMutateRequest}
                 value={locationId}
                 onChange={(e) => setLocationId(e.target.value)}
                 className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
@@ -611,7 +616,7 @@ export function VanStockRequestList({
               <input
                 type="date"
                 required
-                disabled={!canEditLines}
+                disabled={!canMutateRequest}
                 value={requestDate}
                 onChange={(e) => setRequestDate(e.target.value)}
                 className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
@@ -621,7 +626,7 @@ export function VanStockRequestList({
               <label className="mb-1 block text-xs font-medium">Needed for</label>
               <input
                 type="date"
-                disabled={!canEditLines}
+                disabled={!canMutateRequest}
                 value={neededFor}
                 onChange={(e) => setNeededFor(e.target.value)}
                 className="border-input bg-background h-9 w-full rounded-md border px-2 text-sm"
@@ -633,7 +638,7 @@ export function VanStockRequestList({
             <label className="mb-1 block text-xs font-medium">Notes</label>
             <textarea
               value={notes}
-              disabled={!canEditLines}
+              disabled={!canMutateRequest}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               className="border-input bg-background w-full rounded-md border px-2 py-2 text-sm"
@@ -724,7 +729,7 @@ export function VanStockRequestList({
                               }
                             }}
                             placeholder="Type code or product name..."
-                            disabled={!canEditLines}
+                            disabled={!canMutateRequest}
                             className="border-input bg-background max-w-full rounded border px-1 py-1 text-sm"
                           />
                           {productDropdownRow === idx && filterProducts(line.product_label).length > 0 && (
@@ -750,7 +755,7 @@ export function VanStockRequestList({
                     <td className="px-2 py-1.5">
                       <input
                         id={`qty-${idx}`}
-                        disabled={!canEditLines}
+                        disabled={!canMutateRequest}
                         value={line.qty}
                         onChange={(e) => {
                           const v = e.target.value;
@@ -780,7 +785,7 @@ export function VanStockRequestList({
                           type="button"
                           variant="ghost"
                           size="icon"
-                          disabled={!canEditLines}
+                          disabled={!canMutateRequest}
                           className="text-destructive h-8 w-8"
                           onClick={() => {
                             setEditLines((prev) => {
@@ -803,7 +808,7 @@ export function VanStockRequestList({
             <Button
               type="button"
               variant="link"
-              disabled={!canEditLines}
+              disabled={!canMutateRequest}
               className="h-auto p-0 text-primary"
               onClick={() =>
                 setEditLines((prev) => ensureTrailingBlank([...prev, blankLine(String(prev.length))]))
@@ -820,6 +825,7 @@ export function VanStockRequestList({
                 type="button"
                 size="sm"
                 className="gap-1 bg-emerald-600 hover:bg-emerald-700"
+                disabled={caps.loading || !caps.canEdit}
                 onClick={async () => {
                   const res = await setVanStockRequestStatus(editingId!, "approved");
                   if ("error" in res && res.error) alert(res.error);
@@ -837,6 +843,7 @@ export function VanStockRequestList({
                 size="sm"
                 variant="destructive"
                 className="gap-1"
+                disabled={caps.loading || !caps.canEdit}
                 onClick={async () => {
                   const res = await setVanStockRequestStatus(editingId!, "rejected");
                   if ("error" in res && res.error) alert(res.error);
@@ -856,7 +863,7 @@ export function VanStockRequestList({
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            {!editingId && (
+            {!editingId && canMutateRequest && (
               <>
                 <Button type="button" variant="secondary" disabled={saving} onClick={() => void handleSave(false)}>
                   Save draft
@@ -867,7 +874,7 @@ export function VanStockRequestList({
                 </Button>
               </>
             )}
-            {editingId && canEditLines && (
+            {editingId && canMutateRequest && (
               <>
                 <Button type="submit" disabled={saving}>
                   Save changes

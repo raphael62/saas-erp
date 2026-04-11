@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, ChevronUp, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { SalesRepFormDialog } from "@/components/sales/sales-rep-form-dialog";
+import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
 
 type SalesRep = {
   id: string;
@@ -40,6 +41,7 @@ export function SalesRepList({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortCol, setSortCol] = useState<keyof SalesRep>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const caps = useSalesCapabilities();
 
   const PAGE_SIZE = 25;
   const PAGE_BUTTONS = 10;
@@ -138,6 +140,9 @@ export function SalesRepList({
   const formatValue = (rep: SalesRep, key: keyof SalesRep) => {
     if (key === "code" || key === "name") {
       const text = rep[key] ?? "—";
+      if (caps.loading || !caps.canEdit) {
+        return <span>{text}</span>;
+      }
       return (
         <button
           type="button"
@@ -327,6 +332,7 @@ export function SalesRepList({
         <Button
           variant="outline"
           size="sm"
+          disabled={caps.loading || !caps.canCreate}
           onClick={() => {
             setEditingSalesRep(null);
             setShowForm(true);

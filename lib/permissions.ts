@@ -174,6 +174,55 @@ export async function canAccessRoute(
   return false;
 }
 
+export type PageCapabilityFlags = {
+  canView: boolean;
+  canCreate: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  canExport: boolean;
+};
+
+export async function getPageCapabilityFlags(
+  userId: string,
+  moduleKey: string,
+  pageKey: string | null
+): Promise<PageCapabilityFlags> {
+  const [canView, canCreate, canEdit, canDelete, canExport] = await Promise.all([
+    canAccess(userId, moduleKey, pageKey, "view"),
+    canAccess(userId, moduleKey, pageKey, "create"),
+    canAccess(userId, moduleKey, pageKey, "edit"),
+    canAccess(userId, moduleKey, pageKey, "delete"),
+    canAccess(userId, moduleKey, pageKey, "export"),
+  ]);
+  return { canView, canCreate, canEdit, canDelete, canExport };
+}
+
+/** Merge capability flags for routes that appear under multiple modules (e.g. customer payments). */
+export async function getRouteCapabilityFlags(userId: string, pathname: string): Promise<PageCapabilityFlags> {
+  const pairs = getRoutePermissions(pathname);
+  if (pairs.length === 0) {
+    return getPageCapabilityFlags(userId, "dashboard", "overview");
+  }
+  let merged: PageCapabilityFlags = {
+    canView: false,
+    canCreate: false,
+    canEdit: false,
+    canDelete: false,
+    canExport: false,
+  };
+  for (const { moduleKey, pageKey } of pairs) {
+    const f = await getPageCapabilityFlags(userId, moduleKey, pageKey);
+    merged = {
+      canView: merged.canView || f.canView,
+      canCreate: merged.canCreate || f.canCreate,
+      canEdit: merged.canEdit || f.canEdit,
+      canDelete: merged.canDelete || f.canDelete,
+      canExport: merged.canExport || f.canExport,
+    };
+  }
+  return merged;
+}
+
 type ProfileForNav = { role?: string | null; role_id?: string | null; organization_id?: string | null };
 
 /**

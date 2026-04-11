@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { gateSalesPageAction } from "@/lib/mutation-gate";
 
 type ReceiveLineInput = {
   row_no: number;
@@ -25,13 +26,6 @@ type SnapshotRow = {
   received_qty: number;
   os_qty: number;
 };
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0) {
   const raw = String(value ?? "").replace(/,/g, "").trim();
@@ -158,8 +152,9 @@ async function generateReceiveNo(
 }
 
 export async function getSuggestedReceiveNo(datePrefix: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("empties-receive", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const normalized = String(datePrefix ?? "").slice(0, 10);
   if (!normalized) return { error: "Receive date is required." };
   const receiveNo = await generateReceiveNo(supabase, orgId, normalized);
@@ -172,8 +167,9 @@ export async function getCustomerEmptiesSnapshot(
   showAllTypes = false,
   excludeReceiveId?: string
 ) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("empties-receive", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const customer = String(customerId ?? "").trim();
   if (!customer) return { error: "Customer is required." };
@@ -325,10 +321,10 @@ export async function getCustomerEmptiesSnapshot(
 }
 
 export async function saveEmptiesReceive(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(formData.get("id") ?? "").trim() || null;
+  const gate = await gateSalesPageAction("empties-receive", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const receiveNoInput = String(formData.get("receive_no") ?? "").trim() || null;
   const emptiesReceiptNo = String(formData.get("empties_receipt_no") ?? "").trim() || null;
   const customerId = String(formData.get("customer_id") ?? "").trim() || null;
@@ -449,8 +445,9 @@ export async function saveEmptiesReceive(formData: FormData) {
 }
 
 export async function deleteEmptiesReceive(id: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("empties-receive", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const receiveId = String(id ?? "").trim();
   if (!receiveId) return { error: "Missing receive id." };

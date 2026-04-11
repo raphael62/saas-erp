@@ -1,21 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
 import { parseBool, parseCsv, parseNumber } from "@/lib/csv";
-
-async function getOrgId() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { error: ctx.error, supabase: ctx.supabase, orgId: null as string | null };
-  return { error: null as string | null, supabase: ctx.supabase, orgId: ctx.orgId };
-}
+import { gateSalesPageAction, gateSalesPageAnyAction } from "@/lib/mutation-gate";
 
 export async function savePriceList(formData: FormData) {
-  const { error: orgError, supabase, orgId } = await getOrgId();
-  if (orgError || !orgId) return { error: orgError ?? "Unauthorized" };
-
   const id = (formData.get("id") as string | null)?.trim() || null;
+  const gate = await gateSalesPageAction("price-list", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const name = (formData.get("name") as string | null)?.trim();
   const priceTypeId = (formData.get("price_type_id") as string | null)?.trim();
   const effectiveDate = (formData.get("effective_date") as string | null)?.trim() || null;
@@ -136,8 +129,9 @@ export async function savePriceList(formData: FormData) {
 }
 
 export async function deletePriceList(id: string) {
-  const { error: orgError, supabase, orgId } = await getOrgId();
-  if (orgError || !orgId) return { error: orgError ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("price-list", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const priceListId = id.trim();
   if (!priceListId) return { error: "Missing price list id" };
@@ -162,8 +156,9 @@ export async function deletePriceList(id: string) {
 }
 
 export async function upsertProductPrices(formData: FormData) {
-  const { error: orgError, supabase, orgId } = await getOrgId();
-  if (orgError || !orgId) return { error: orgError ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("price-list", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const productId = (formData.get("product_id") as string | null)?.trim();
   if (!productId) return { error: "Missing product" };
@@ -200,8 +195,9 @@ export async function upsertProductPrices(formData: FormData) {
 }
 
 export async function importPriceListsCsv(formData: FormData) {
-  const { error: orgError, supabase, orgId } = await getOrgId();
-  if (orgError || !orgId) return { error: orgError ?? "Unauthorized" };
+  const gate = await gateSalesPageAnyAction("price-list", ["create", "edit"]);
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };
@@ -345,8 +341,9 @@ export async function importPriceListsCsv(formData: FormData) {
 }
 
 export async function importPriceListItemsCsvToSelected(formData: FormData) {
-  const { error: orgError, supabase, orgId } = await getOrgId();
-  if (orgError || !orgId) return { error: orgError ?? "Unauthorized" };
+  const gate = await gateSalesPageAnyAction("price-list", ["create", "edit"]);
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const priceListId = String(formData.get("price_list_id") ?? "").trim();
   if (!priceListId) return { error: "Select a price list first." };

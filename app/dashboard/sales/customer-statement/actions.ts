@@ -1,7 +1,7 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { isTableUnavailableError, isSchemaCacheError } from "@/lib/supabase/table-missing";
+import { gateSalesPageAction } from "@/lib/mutation-gate";
 
 const SCHEMA_CACHE_MSG =
   "PostgREST schema cache is out of sync. Click 'Reload schema' then try again.";
@@ -47,16 +47,10 @@ function normalizeDate(input: string | null | undefined) {
   return String(input ?? "").slice(0, 10);
 }
 
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
-
 export async function getCustomerStatement(fromDateInput: string, toDateInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("customer-statement", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const fromDate = normalizeDate(fromDateInput);
   const toDate = normalizeDate(toDateInput);
@@ -163,8 +157,9 @@ export async function getCustomerStatementTransactions(
   fromDateInput: string,
   toDateInput: string
 ) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("customer-statement", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const customerId = String(customerIdInput ?? "").trim();
   const fromDate = normalizeDate(fromDateInput);

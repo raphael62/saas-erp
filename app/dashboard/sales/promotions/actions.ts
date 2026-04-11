@@ -1,16 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, user: null, orgId: null as string | null, error: ctx.error };
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  return { supabase, user: user ?? null, orgId: ctx.orgId, error: null as string | null };
-}
+import { gateSalesPageAction } from "@/lib/mutation-gate";
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0) {
   const raw = String(value ?? "").replace(/,/g, "").trim();
@@ -37,10 +28,10 @@ function collectRuleIndexes(formData: FormData) {
 }
 
 export async function savePromotion(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(formData.get("id") ?? "").trim() || null;
+  const gate = await gateSalesPageAction("promotions", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const promoCode = String(formData.get("promo_code") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   const startDate = String(formData.get("start_date") ?? "").trim();
@@ -140,8 +131,9 @@ export async function savePromotion(formData: FormData) {
 }
 
 export async function deletePromotion(id: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateSalesPageAction("promotions", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const promotionId = String(id ?? "").trim();
   if (!promotionId) return { error: "Missing promotion id." };
