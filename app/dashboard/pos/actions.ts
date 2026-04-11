@@ -2,21 +2,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { getOrgContextForAction } from "@/lib/org-context";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 import { reassignInventoryDeltaFromDefaultLocation } from "@/lib/inventory-location-balances";
-
-async function getPosOrgContext() {
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) {
-    return {
-      supabase: ctx.supabase,
-      orgId: null as string | null,
-      userId: ctx.userId ?? null,
-      error: ctx.error,
-    };
-  }
-  return { supabase: ctx.supabase, orgId: ctx.orgId, userId: ctx.userId, error: null as string | null };
-}
+import { getUserTransactionScope, scopeAllowsInvoiceRow } from "@/lib/user-transaction-scope";
 
 function n(v: string | number | null | undefined): number {
   const raw = String(v ?? "").replace(/,/g, "").trim();
@@ -73,34 +61,47 @@ async function generatePosInvoiceNo(
   saleDate: string
 ): Promise<string> {
   const prefix = `POS-${saleDate.replace(/-/g, "")}-`;
-  const { data } = await supabase
-    .from("sales_invoices")
-    .select("invoice_no")
-    .eq("organization_id", orgId)
-    .eq("type_status", "pos")
-    .like("invoice_no", `${prefix}%`)
-    .order("invoice_no", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const last = (data as { invoice_no?: string } | null)?.invoice_no;
-  let seq = 1;
-  if (last) {
-    const suffix = last.replace(prefix, "");
-    const parsed = parseInt(suffix, 10);
-    if (Number.isFinite(parsed)) seq = parsed + 1;
+  const { data: seqRaw, error } = await supabase.rpc("next_sales_invoice_seq_for_prefix", {
+    p_organization_id: orgId,
+    p_prefix: prefix,
+  });
+  if (error) {
+    const { data } = await supabase
+      .from("sales_invoices")
+      .select("invoice_no")
+      .eq("organization_id", orgId)
+      .eq("type_status", "pos")
+      .like("invoice_no", `${prefix}%`)
+      .order("invoice_no", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const last = (data as { invoice_no?: string } | null)?.invoice_no;
+    let seq = 1;
+    if (last) {
+      const suffix = last.replace(prefix, "");
+      const parsed = parseInt(suffix, 10);
+      if (Number.isFinite(parsed)) seq = parsed + 1;
+    }
+    return `${prefix}${String(seq).padStart(4, "0")}`;
   }
+  const seq = typeof seqRaw === "number" && Number.isFinite(seqRaw) ? seqRaw : 1;
   return `${prefix}${String(seq).padStart(4, "0")}`;
 }
 
 export async function savePosSale(input: PosSaleInput) {
-  const { supabase, orgId, userId, error } = await getPosOrgContext();
-  if (error || !orgId || !userId) return { error: error ?? "No organization" };
+  const gate = await gateModulePageAction("pos", "new-sale", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId, userId } = gate;
 
   const customerId = input.customerId?.trim() || null;
   const locationId = input.locationId?.trim() || null;
   const salesRepId = input.salesRepId?.trim() || null;
   if (!salesRepId) return { error: "Sales Rep is required" };
+
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+  if (!scopeAllowsInvoiceRow(scope, locationId, salesRepId)) {
+    return { error: "You are not allowed to use this location or sales rep for this sale." };
+  }
 
   const saleDate = String(input.saleDate ?? "").slice(0, 10);
   if (!saleDate) return { error: "Sale date is required" };
@@ -515,8 +516,9 @@ export async function searchPosReceipts(
   toDate: string,
   query?: string
 ): Promise<{ receipts?: ReceiptRow[]; error?: string }> {
-  const { supabase, orgId, error: ctxError } = await getPosOrgContext();
-  if (ctxError || !orgId) return { error: ctxError ?? "No organization" };
+  const gate = await gateModulePageAction("pos", "receipts", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { data, error } = await supabase
     .from("sales_invoices")
@@ -573,8 +575,9 @@ export async function searchPosReceipts(
 }
 
 export async function refundPosReceipt(invoiceId: string): Promise<{ error?: string }> {
-  const { supabase, orgId, error } = await getPosOrgContext();
-  if (error || !orgId) return { error: error ?? "No organization" };
+  const gate = await gateModulePageAction("pos", "receipts", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { data: inv } = await supabase
     .from("sales_invoices")
@@ -622,8 +625,9 @@ export async function refundPosReceipt(invoiceId: string): Promise<{ error?: str
 export async function refundPosReceiptLine(
   lineId: string
 ): Promise<{ error?: string }> {
-  const { supabase, orgId, error } = await getPosOrgContext();
-  if (error || !orgId) return { error: error ?? "No organization" };
+  const gate = await gateModulePageAction("pos", "receipts", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { data: line } = await supabase
     .from("sales_invoice_lines")
@@ -703,8 +707,9 @@ export type DailyPaymentRow = {
 export async function getDailyPosPayments(
   date: string
 ): Promise<{ payments?: DailyPaymentRow[]; error?: string }> {
-  const { supabase, orgId, error: ctxError } = await getPosOrgContext();
-  if (ctxError || !orgId) return { error: ctxError ?? "No organization" };
+  const gate = await gateModulePageAction("pos", "daily-payments", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { data, error } = await supabase
     .from("sales_invoices")
@@ -760,8 +765,9 @@ export async function getDailyPosPaymentsByAccount(
   totalReceipts?: number;
   error?: string;
 }> {
-  const { supabase, orgId, error: ctxError } = await getPosOrgContext();
-  if (ctxError || !orgId) return { error: ctxError ?? "No organization" };
+  const gate = await gateModulePageAction("pos", "daily-payments", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const [accountsRes, invoicesRes] = await Promise.all([
     supabase

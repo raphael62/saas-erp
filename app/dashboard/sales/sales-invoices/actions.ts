@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { reassignInventoryDeltaFromDefaultLocation } from "@/lib/inventory-location-balances";
 import { gateSalesPageAction } from "@/lib/mutation-gate";
+import { getUserTransactionScope, scopeAllowsInvoiceRow } from "@/lib/user-transaction-scope";
 
 type InvoiceLineInput = {
   row_no: number;
@@ -221,19 +222,25 @@ async function generateInvoiceNo(
   datePrefix: string
 ) {
   const prefix = `${datePrefix}-`;
-
-  const { data } = await supabase
-    .from("sales_invoices")
-    .select("invoice_no")
-    .eq("organization_id", orgId)
-    .ilike("invoice_no", `${prefix}%`)
-    .order("invoice_no", { ascending: false })
-    .limit(1);
-
-  const latest = data?.[0]?.invoice_no ?? "";
-  const latestSuffix = latest.startsWith(prefix) ? latest.slice(prefix.length) : "";
-  const seq = Number(latestSuffix) || 0;
-  return `${prefix}${String(seq + 1).padStart(3, "0")}`;
+  const { data: seqRaw, error } = await supabase.rpc("next_sales_invoice_seq_for_prefix", {
+    p_organization_id: orgId,
+    p_prefix: prefix,
+  });
+  if (error) {
+    const { data } = await supabase
+      .from("sales_invoices")
+      .select("invoice_no")
+      .eq("organization_id", orgId)
+      .ilike("invoice_no", `${prefix}%`)
+      .order("invoice_no", { ascending: false })
+      .limit(1);
+    const latest = data?.[0]?.invoice_no ?? "";
+    const latestSuffix = latest.startsWith(prefix) ? latest.slice(prefix.length) : "";
+    const seq = Number(latestSuffix) || 0;
+    return `${prefix}${String(seq + 1).padStart(3, "0")}`;
+  }
+  const seq = typeof seqRaw === "number" && Number.isFinite(seqRaw) ? seqRaw : 1;
+  return `${prefix}${String(seq).padStart(3, "0")}`;
 }
 
 export async function getSuggestedInvoiceNo(deliveryDateInput: string) {
@@ -254,7 +261,7 @@ export async function saveSalesInvoice(formData: FormData) {
   const id = String(formData.get("id") ?? "").trim() || null;
   const gate = await gateSalesPageAction("sales-invoices", id ? "edit" : "create");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
   const customerId = String(formData.get("customer_id") ?? "").trim() || null;
   const salesRepId = String(formData.get("sales_rep_id") ?? "").trim() || null;
   const locationId = String(formData.get("location_id") ?? "").trim() || null;
@@ -269,6 +276,11 @@ export async function saveSalesInvoice(formData: FormData) {
 
   if (!customerId) return { error: "Customer is required." };
   if (!invoiceDate) return { error: "Invoice date is required." };
+
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+  if (!scopeAllowsInvoiceRow(scope, locationId, salesRepId)) {
+    return { error: "You are not allowed to use this location or sales rep for this invoice." };
+  }
 
   const lines = collectLines(formData);
   if (lines.length === 0) return { error: "Add at least one invoice line." };

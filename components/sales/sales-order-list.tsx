@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { deleteSalesOrder } from "@/app/dashboard/sales/sales-orders/actions";
 import { SalesOrderFormDialog } from "@/components/sales/sales-order-form-dialog";
-import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
+import { useSalesCapabilities } from "@/components/dashboard/route-capability-provider";
 
 type Order = {
   id: string;

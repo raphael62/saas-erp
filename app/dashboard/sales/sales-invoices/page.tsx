@@ -3,6 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { SalesInvoiceList } from "@/components/sales/sales-invoice-list";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import {
+  getUserTransactionScope,
+  filterLocationsByScope,
+  filterSalesRepsByScope,
+} from "@/lib/user-transaction-scope";
 
 export default async function SalesInvoicesPage({
   searchParams,
@@ -140,8 +145,15 @@ export default async function SalesInvoicesPage({
   const lines = linesRes.error ? [] : linesRes.data ?? [];
   const products = productsRes.error ? [] : productsRes.data ?? [];
   const customers = customersRes.error ? [] : customersRes.data ?? [];
-  const salesReps = repsRes.error ? [] : repsRes.data ?? [];
-  const locations = locationsRes.error ? [] : locationsRes.data ?? [];
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  const salesReps = filterSalesRepsByScope(
+    scope,
+    (repsRes.error ? [] : repsRes.data ?? []) as Array<{ id: string; code?: string | null; name: string }>
+  );
+  const locations = filterLocationsByScope(
+    scope,
+    (locationsRes.error ? [] : locationsRes.data ?? []) as Array<{ id: string; code?: string | null; name: string }>
+  );
   const priceTypes = priceTypesRes.error ? [] : priceTypesRes.data ?? [];
   const priceLists = priceListsRes.error ? [] : priceListsRes.data ?? [];
   const priceListItems = priceListItemsRes.error ? [] : priceListItemsRes.data ?? [];

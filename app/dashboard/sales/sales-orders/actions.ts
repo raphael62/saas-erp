@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { gateSalesPageAction } from "@/lib/mutation-gate";
+import { getUserTransactionScope, scopeAllowsInvoiceRow, filterLocationsByScope, filterSalesRepsByScope } from "@/lib/user-transaction-scope";
 
 type OrderLineInput = {
   row_no: number;
@@ -112,7 +113,7 @@ export async function saveSalesOrder(formData: FormData) {
   const id = String(formData.get("id") ?? "").trim() || null;
   const gate = await gateSalesPageAction("sales-orders", id ? "edit" : "create");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
   const customerId = String(formData.get("customer_id") ?? "").trim() || null;
   const salesRepId = String(formData.get("sales_rep_id") ?? "").trim() || null;
   const locationId = String(formData.get("location_id") ?? "").trim() || null;
@@ -123,6 +124,11 @@ export async function saveSalesOrder(formData: FormData) {
 
   if (!customerId) return { error: "Customer is required." };
   if (!orderDate) return { error: "Order date is required." };
+
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+  if (!scopeAllowsInvoiceRow(scope, locationId, salesRepId)) {
+    return { error: "You are not allowed to use this location or sales rep for this order." };
+  }
 
   const lines = collectLines(formData);
   if (lines.length === 0) return { error: "Add at least one order line." };
@@ -264,7 +270,7 @@ export async function loadSalesOrdersReferenceData(): Promise<
 > {
   const gate = await gateSalesPageAction("sales-orders", "view");
   if (!gate.ok) return { ok: false, error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
 
   const productsRes = await supabase
     .from("products")
@@ -319,13 +325,17 @@ export async function loadSalesOrdersReferenceData(): Promise<
 
   const empty = (res: { data?: unknown; error?: unknown }) => Boolean(res.error);
 
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+  const repsRaw = (empty(repsRes) ? [] : repsRes.data ?? []) as SalesOrdersReferenceData["salesReps"];
+  const locsRaw = (empty(locationsRes) ? [] : locationsRes.data ?? []) as SalesOrdersReferenceData["locations"];
+
   return {
     ok: true,
     data: {
       products: (empty(productsRes) ? [] : productsRes.data ?? []) as SalesOrdersReferenceData["products"],
       customers: (empty(customersRes) ? [] : customersRes.data ?? []) as SalesOrdersReferenceData["customers"],
-      salesReps: (empty(repsRes) ? [] : repsRes.data ?? []) as SalesOrdersReferenceData["salesReps"],
-      locations: (empty(locationsRes) ? [] : locationsRes.data ?? []) as SalesOrdersReferenceData["locations"],
+      salesReps: filterSalesRepsByScope(scope, repsRaw),
+      locations: filterLocationsByScope(scope, locsRaw),
       priceTypes: (empty(priceTypesRes) ? [] : priceTypesRes.data ?? []) as SalesOrdersReferenceData["priceTypes"],
       priceLists: (empty(priceListsRes) ? [] : priceListsRes.data ?? []) as SalesOrdersReferenceData["priceLists"],
       priceListItems: (empty(priceListItemsRes) ? [] : priceListItemsRes.data ?? []) as SalesOrdersReferenceData["priceListItems"],

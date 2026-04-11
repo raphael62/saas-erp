@@ -469,6 +469,8 @@ export function NewPOSSale({
   cashierName,
   paymentAccounts = [],
   paymentMethods = [],
+  initialLocationId = "",
+  initialSalesRepId = "",
 }: {
   customers: Customer[];
   salesReps: SalesRep[];
@@ -487,14 +489,17 @@ export function NewPOSSale({
   cashierName?: string;
   paymentAccounts?: PaymentAccount[];
   paymentMethods?: PaymentMethod[];
+  /** Pre-filled from user provisioning (primary location / linked rep). */
+  initialLocationId?: string;
+  initialSalesRepId?: string;
 }) {
   const router = useRouter();
   const cashier = cashierName ?? "Cashier";
   const today = new Date().toISOString().slice(0, 10);
   const [saleDate, setSaleDate] = useState(today);
   const [customerId, setCustomerId] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [salesRepId, setSalesRepId] = useState("");
+  const [locationId, setLocationId] = useState(initialLocationId);
+  const [salesRepId, setSalesRepId] = useState(initialSalesRepId);
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([blankLine("0", defaultPriceType)]);
   const [lineDropdown, setLineDropdown] = useState<{ row: number; field: "code" | "name" } | null>(null);

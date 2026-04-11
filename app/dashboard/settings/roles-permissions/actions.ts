@@ -1,31 +1,7 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { hasFullAccess } from "@/lib/roles";
-
-async function getContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) {
-    const isUnauth = ctx.error === "Unauthorized";
-    return {
-      error: isUnauth ? ("Unauthorized" as const) : ("No organization" as const),
-      supabase: isUnauth ? null : ctx.supabase,
-      userId: ctx.userId ?? null,
-      orgId: null,
-    };
-  }
-  const { userId, orgId, supabase } = ctx;
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", userId).single();
-  const role = (profile as { role?: string | null } | null)?.role ?? null;
-  const { data: org } = await supabase.from("organizations").select("created_by").eq("id", orgId).single();
-  const isOwner = (org as { created_by?: string | null } | null)?.created_by === userId;
-  const canManage = hasFullAccess(role) || isOwner;
-  if (!canManage)
-    return { error: "Forbidden" as const, supabase: null, userId, orgId: null };
-  return { error: null, supabase, userId, orgId };
-}
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 export type RoleRow = {
   id: string;
@@ -35,24 +11,24 @@ export type RoleRow = {
 };
 
 export async function listRoles(): Promise<{ roles: RoleRow[]; error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { roles: [], error: ctx.error };
-  if (!ctx.supabase || !ctx.orgId) return { roles: [] };
+  const gate = await gateModulePageAction("settings", "roles-permissions", "view");
+  if (!gate.ok) return { roles: [], error: gate.error };
+  const { supabase, orgId } = gate;
 
-  const { data: roles } = await ctx.supabase
+  const { data: roles } = await supabase
     .from("roles")
     .select("id, name, is_active")
-    .eq("organization_id", ctx.orgId)
+    .eq("organization_id", orgId)
     .order("name");
 
   if (!roles?.length) return { roles: [] };
 
   const roleIdList = roles.map((r) => r.id);
 
-  const { data: prLinks } = await ctx.supabase
+  const { data: prLinks } = await supabase
     .from("profile_roles")
     .select("profile_id, role_id")
-    .eq("organization_id", ctx.orgId)
+    .eq("organization_id", orgId)
     .in("role_id", roleIdList);
 
   const countByRole: Record<string, number> = {};
@@ -66,10 +42,10 @@ export async function listRoles(): Promise<{ roles: RoleRow[]; error?: string }>
     if (countByRole[rid] !== undefined) countByRole[rid] += 1;
   }
 
-  const { data: legacyProfiles } = await ctx.supabase
+  const { data: legacyProfiles } = await supabase
     .from("profiles")
     .select("id, role_id")
-    .eq("organization_id", ctx.orgId)
+    .eq("organization_id", orgId)
     .not("role_id", "is", null);
 
   for (const p of legacyProfiles ?? []) {
@@ -90,16 +66,16 @@ export async function listRoles(): Promise<{ roles: RoleRow[]; error?: string }>
 }
 
 export async function createRole(formData: FormData): Promise<{ id?: string; error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { error: ctx.error };
-  if (!ctx.supabase || !ctx.orgId) return { error: "No organization" };
+  const gate = await gateModulePageAction("settings", "roles-permissions", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const name = (formData.get("name") as string)?.trim();
   if (!name) return { error: "Role name is required" };
 
-  const { data, error } = await ctx.supabase
+  const { data, error } = await supabase
     .from("roles")
-    .insert({ organization_id: ctx.orgId, name })
+    .insert({ organization_id: orgId, name })
     .select("id")
     .single();
 
@@ -123,11 +99,19 @@ export type PermissionRow = {
 export async function getRolePermissions(
   roleId: string
 ): Promise<{ permissions: PermissionRow[]; error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { permissions: [], error: ctx.error };
-  if (!ctx.supabase) return { permissions: [] };
+  const gate = await gateModulePageAction("settings", "roles-permissions", "view");
+  if (!gate.ok) return { permissions: [], error: gate.error };
+  const { supabase, orgId } = gate;
 
-  const { data, error } = await ctx.supabase
+  const { data: roleRow } = await supabase
+    .from("roles")
+    .select("id")
+    .eq("id", roleId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (!roleRow) return { permissions: [], error: "Role not found." };
+
+  const { data, error } = await supabase
     .from("role_permissions")
     .select("id, module_key, page_key, can_view, can_create, can_edit, can_delete, can_export, is_full")
     .eq("role_id", roleId);
@@ -153,11 +137,19 @@ export async function saveRolePermissions(
   roleId: string,
   permissions: Omit<PermissionRow, "id">[]
 ): Promise<{ error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { error: ctx.error };
-  if (!ctx.supabase) return { error: "Unauthorized" };
+  const gate = await gateModulePageAction("settings", "roles-permissions", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
-  const { error: delError } = await ctx.supabase
+  const { data: roleRow } = await supabase
+    .from("roles")
+    .select("id")
+    .eq("id", roleId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (!roleRow) return { error: "Role not found." };
+
+  const { error: delError } = await supabase
     .from("role_permissions")
     .delete()
     .eq("role_id", roleId);
@@ -190,7 +182,7 @@ export async function saveRolePermissions(
     is_full: p.is_full,
   }));
 
-  const { error: insError } = await ctx.supabase.from("role_permissions").insert(rows);
+  const { error: insError } = await supabase.from("role_permissions").insert(rows);
 
   if (insError) return { error: insError.message };
   revalidatePath("/dashboard/settings/roles-permissions");

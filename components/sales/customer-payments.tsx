@@ -11,7 +11,7 @@ import {
   saveBatchCustomerPayments,
   saveCustomerPayment,
 } from "@/app/dashboard/sales/customer-payments/actions";
-import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
+import { useSalesCapabilities } from "@/components/dashboard/route-capability-provider";
 
 type Customer = {
   id: string;

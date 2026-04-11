@@ -11,7 +11,7 @@ import {
   setVanStockRequestStatus,
   submitVanStockRequestForApproval,
 } from "@/app/dashboard/sales/van-stock-requests/actions";
-import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
+import { useSalesCapabilities } from "@/components/dashboard/route-capability-provider";
 
 export type VanStockRequest = {
   id: string;

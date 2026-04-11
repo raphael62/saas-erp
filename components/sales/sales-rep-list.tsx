@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, ChevronUp, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { SalesRepFormDialog } from "@/components/sales/sales-rep-form-dialog";
-import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
+import { useSalesCapabilities } from "@/components/dashboard/route-capability-provider";
 
 type SalesRep = {
   id: string;

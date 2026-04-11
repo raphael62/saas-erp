@@ -6,6 +6,7 @@ import Sidebar from "@/components/dashboard/sidebar";
 import { getNavForUser } from "@/lib/permissions";
 import { mainNavItems } from "@/lib/nav-items";
 import { dashboardAccentCssVars, isValidThemeAccentHex } from "@/lib/theme-accent";
+import { DashboardCapabilityShell } from "@/components/dashboard/dashboard-capability-shell";
 
 const LAYOUT_TIMEOUT_MS = 8000;
 
@@ -177,7 +178,9 @@ export default async function DashboardLayout({
             />
             <div className="flex flex-1">
               <Sidebar navItems={navItems} />
-              <main className="flex-1 overflow-auto p-4 sm:p-6">{children}</main>
+              <main className="flex-1 overflow-auto p-4 sm:p-6">
+                <DashboardCapabilityShell>{children}</DashboardCapabilityShell>
+              </main>
             </div>
           </div>
         );

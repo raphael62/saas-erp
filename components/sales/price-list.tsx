@@ -20,7 +20,7 @@ import {
 } from "@/app/dashboard/sales/price-list/actions";
 import { PriceListFormDialog } from "@/components/sales/price-list-form-dialog";
 import { parseCsv, parseNumber, type CsvRow } from "@/lib/csv";
-import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
+import { useSalesCapabilities } from "@/components/dashboard/route-capability-provider";
 
 type Product = {
   id: string | number;

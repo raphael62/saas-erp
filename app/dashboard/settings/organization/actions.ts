@@ -2,21 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-
-async function getContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) {
-    const isUnauth = ctx.error === "Unauthorized";
-    return {
-      error: isUnauth ? ("Unauthorized" as const) : ("No organization" as const),
-      supabase: isUnauth ? null : ctx.supabase,
-      userId: ctx.userId ?? null,
-      orgId: null,
-    };
-  }
-  return { error: null, supabase: ctx.supabase, userId: ctx.userId, orgId: ctx.orgId };
-}
+import { getOrgContextForAction } from "@/lib/org-context";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 export type OrgRow = {
   id: string;
@@ -108,22 +95,22 @@ export async function assignOrphanOrg(): Promise<{ error?: string }> {
 }
 
 export async function getOrganization(): Promise<{ org: OrgRow | null; error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { org: null, error: ctx.error };
-  if (!ctx.supabase || !ctx.orgId) return { org: null };
+  const gate = await gateModulePageAction("settings", "organization", "view");
+  if (!gate.ok) return { org: null, error: gate.error };
+  const { supabase, orgId } = gate;
 
-  const { data, error } = await ctx.supabase
+  const { data, error } = await supabase
     .from("organizations")
     .select("id, name, slug, phone, code, created_by, subscription_ends_at")
-    .eq("id", ctx.orgId)
+    .eq("id", orgId)
     .single();
 
   if (error) {
     if (error.message?.includes("subscription_ends_at")) {
-      const { data: fb, error: err2 } = await ctx.supabase
+      const { data: fb, error: err2 } = await supabase
         .from("organizations")
         .select("id, name, slug, phone, code, created_by")
-        .eq("id", ctx.orgId)
+        .eq("id", orgId)
         .single();
       if (err2 || !fb) return { org: null, error: err2?.message ?? error.message };
       return {
@@ -157,9 +144,14 @@ export async function getOrganization(): Promise<{ org: OrgRow | null; error?: s
 }
 
 export async function createOrganization(formData: FormData): Promise<{ error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { error: ctx.error };
-  if (!ctx.supabase || !ctx.userId) return { error: "Unauthorized" };
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok && ctx.error === "Unauthorized") return { error: ctx.error };
+  if (ctx.ok) {
+    const gate = await gateModulePageAction("settings", "organization", "create");
+    if (!gate.ok) return { error: gate.error };
+  }
+
+  const supabase = ctx.supabase;
 
   const name = (formData.get("name") as string)?.trim();
   if (!name) return { error: "Organization name is required" };
@@ -167,7 +159,7 @@ export async function createOrganization(formData: FormData): Promise<{ error?: 
   const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "org";
   const phone = (formData.get("phone") as string)?.trim() || null;
 
-  const { data: orgId, error } = await ctx.supabase.rpc("create_organization_for_user", {
+  const { data: orgId, error } = await supabase.rpc("create_organization_for_user", {
     p_name: name,
     p_slug: slug,
     p_phone: phone || null,
@@ -186,9 +178,10 @@ export async function updateOrganization(
   orgId: string,
   formData: FormData
 ): Promise<{ error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { error: ctx.error };
-  if (!ctx.supabase || !ctx.orgId || ctx.orgId !== orgId) return { error: "Forbidden" };
+  const gate = await gateModulePageAction("settings", "organization", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId: sessionOrgId } = gate;
+  if (sessionOrgId !== orgId) return { error: "Forbidden" };
 
   const name = (formData.get("name") as string)?.trim();
   if (!name) return { error: "Organization name is required" };
@@ -200,7 +193,7 @@ export async function updateOrganization(
   const subscription_ends_at = subDate ? `${subDate}T23:59:59.999Z` : null;
 
   const updatedAt = new Date().toISOString();
-  const { error } = await ctx.supabase
+  const { error } = await supabase
     .from("organizations")
     .update({
       name,
@@ -212,7 +205,7 @@ export async function updateOrganization(
     .eq("id", orgId);
 
   if (error?.message?.includes("subscription_ends_at")) {
-    const { error: err2 } = await ctx.supabase
+    const { error: err2 } = await supabase
       .from("organizations")
       .update({ name, slug, phone, updated_at: updatedAt })
       .eq("id", orgId);

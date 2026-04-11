@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 type DispatchLineInput = {
   row_no: number;
@@ -13,13 +14,6 @@ type DispatchLineInput = {
   unit_price: number;
   total_value: number;
 };
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0) {
   const raw = String(value ?? "").replace(/,/g, "").trim();
@@ -140,8 +134,9 @@ async function generateDispatchNo(
 }
 
 export async function getSuggestedDispatchNo(datePrefix: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("purchases", "empties-dispatch", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const normalized = String(datePrefix ?? "").slice(0, 10);
   if (!normalized) return { error: "Dispatch date is required." };
   const dispatchNo = await generateDispatchNo(supabase, orgId, normalized);
@@ -149,10 +144,12 @@ export async function getSuggestedDispatchNo(datePrefix: string) {
 }
 
 export async function saveEmptiesDispatch(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const idForGate = String(formData.get("id") ?? "").trim();
+  const gate = await gateModulePageAction("purchases", "empties-dispatch", idForGate ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
-  const id = String(formData.get("id") ?? "").trim() || null;
+  const id = idForGate || null;
   const supplierId = String(formData.get("supplier_id") ?? "").trim() || null;
   const locationId = String(formData.get("location_id") ?? "").trim() || null;
   const dispatchNoInput = String(formData.get("dispatch_no") ?? "").trim() || null;
@@ -278,8 +275,9 @@ export async function saveEmptiesDispatch(formData: FormData) {
 }
 
 export async function deleteEmptiesDispatch(id: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("purchases", "empties-dispatch", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const dispatchId = String(id ?? "").trim();
   if (!dispatchId) return { error: "Missing dispatch id." };

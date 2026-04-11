@@ -76,3 +76,17 @@ export async function gateSalesAnyPageAction(
   }
   return { ok: false, error: FORBIDDEN };
 }
+
+/** Grant if any (module, page) pair allows the action — for cross-page workflows. */
+export async function gateAnyModulePageAction(
+  specs: { moduleKey: string; pageKey: string | null; action: PermissionAction }[]
+): Promise<OrgMutationGateResult> {
+  const ctx = await getOrgContextForAction();
+  if (!ctx.ok) return { ok: false, error: ctx.error };
+  for (const s of specs) {
+    if (await canAccess(ctx.userId, s.moduleKey, s.pageKey, s.action)) {
+      return { ok: true, userId: ctx.userId, orgId: ctx.orgId, supabase: ctx.supabase };
+    }
+  }
+  return { ok: false, error: FORBIDDEN };
+}

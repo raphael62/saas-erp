@@ -1,8 +1,8 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { parseBool, parseCsv, parseNumber } from "@/lib/csv";
+import { gateModulePageAction, gateModulePageAnyAction } from "@/lib/mutation-gate";
 
 type TemplateColumnInput = {
   column_key: string;
@@ -20,13 +20,6 @@ type TemplatePayload = {
   authorization_group?: string | null;
   is_default?: boolean;
 };
-
-async function getCurrentOrgId() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const result = await getOrgContextForAction();
-  if (!result.ok) return { error: result.error as "Unauthorized" | "No organization" };
-  return { orgId: result.orgId, userId: result.userId, supabase: result.supabase };
-}
 
 function buildProductPayload(formData: FormData, orgId: string) {
   const name = formData.get("name") as string;
@@ -80,9 +73,9 @@ function buildProductPayload(formData: FormData, orgId: string) {
 }
 
 export async function addProduct(formData: FormData) {
-  const ctx = await getCurrentOrgId();
-  if ("error" in ctx) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateModulePageAction("inventory", "products", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const built = buildProductPayload(formData, orgId);
   if ("error" in built) return { error: built.error };
@@ -98,9 +91,9 @@ export async function addProduct(formData: FormData) {
 }
 
 export async function updateProduct(id: string, formData: FormData) {
-  const ctx = await getCurrentOrgId();
-  if ("error" in ctx) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateModulePageAction("inventory", "products", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const built = buildProductPayload(formData, orgId);
   if ("error" in built) return { error: built.error };
@@ -120,8 +113,10 @@ export async function updateProduct(id: string, formData: FormData) {
 }
 
 export async function deleteProduct(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("products").delete().eq("id", id);
+  const gate = await gateModulePageAction("inventory", "products", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
+  const { error } = await supabase.from("products").delete().eq("id", id).eq("organization_id", orgId);
   if (error) return { error: error.message };
   revalidatePath("/dashboard/inventory");
   revalidatePath("/dashboard/inventory/products");
@@ -130,9 +125,9 @@ export async function deleteProduct(id: string) {
 }
 
 export async function importProductsCsv(formData: FormData) {
-  const ctx = await getCurrentOrgId();
-  if ("error" in ctx) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateModulePageAnyAction("inventory", "products", ["create", "edit"]);
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const file = formData.get("file");
   if (!(file instanceof File)) return { error: "CSV file is required" };
@@ -215,9 +210,9 @@ export async function importProductsCsv(formData: FormData) {
 }
 
 export async function getListTemplates(moduleKey: string) {
-  const ctx = await getCurrentOrgId();
-  if ("error" in ctx) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateModulePageAction("inventory", "products", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const { data, error } = await supabase
     .from("list_templates")
@@ -232,9 +227,9 @@ export async function getListTemplates(moduleKey: string) {
 }
 
 export async function getTemplateDefinition(templateId: string) {
-  const ctx = await getCurrentOrgId();
-  if ("error" in ctx) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateModulePageAction("inventory", "products", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const { data: template, error: templateError } = await supabase
     .from("list_templates")
@@ -255,9 +250,9 @@ export async function getTemplateDefinition(templateId: string) {
 }
 
 export async function createListTemplate(payload: TemplatePayload) {
-  const ctx = await getCurrentOrgId();
-  if ("error" in ctx) return { error: ctx.error };
-  const { orgId, userId, supabase } = ctx;
+  const gate = await gateModulePageAction("inventory", "products", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, userId, supabase } = gate;
 
   const cleanName = payload.name?.trim();
   if (!cleanName) return { error: "Template name is required" };
@@ -292,9 +287,9 @@ export async function createListTemplate(payload: TemplatePayload) {
 }
 
 export async function updateListTemplate(templateId: string, payload: Partial<TemplatePayload>) {
-  const ctx = await getCurrentOrgId();
-  if ("error" in ctx) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateModulePageAction("inventory", "products", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const updatePayload: Record<string, unknown> = {};
   if (payload.name !== undefined) {
@@ -336,9 +331,9 @@ export async function updateListTemplate(templateId: string, payload: Partial<Te
 }
 
 export async function saveTemplateColumns(templateId: string, columns: TemplateColumnInput[]) {
-  const ctx = await getCurrentOrgId();
-  if ("error" in ctx) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateModulePageAction("inventory", "products", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const { data: ownedTemplate, error: ownershipError } = await supabase
     .from("list_templates")
@@ -376,9 +371,9 @@ export async function saveTemplateColumns(templateId: string, columns: TemplateC
 }
 
 export async function ensureDefaultListTemplate(moduleKey: string) {
-  const ctx = await getCurrentOrgId();
-  if ("error" in ctx) return { error: ctx.error };
-  const { orgId, userId, supabase } = ctx;
+  const gate = await gateModulePageAnyAction("inventory", "products", ["create", "edit"]);
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, userId, supabase } = gate;
 
   const { data: existing, error: existingError } = await supabase
     .from("list_templates")

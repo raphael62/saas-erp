@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { deletePromotion } from "@/app/dashboard/sales/promotions/actions";
 import { PromotionFormDialog, type Promotion, type PromotionRule } from "@/components/sales/promotion-form-dialog";
 import { useRouter } from "next/navigation";
-import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
+import { useSalesCapabilities } from "@/components/dashboard/route-capability-provider";
 
 type Product = {
   id: string;

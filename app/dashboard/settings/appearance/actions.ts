@@ -2,9 +2,12 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 import { normalizeThemeAccentHex } from "@/lib/theme-accent";
 
 export async function updateThemeAccentHex(formData: FormData): Promise<{ error?: string }> {
+  const gate = await gateModulePageAction("settings", "overview", "edit");
+  if (!gate.ok) return { error: gate.error };
   const supabase = await createClient();
   const {
     data: { user },
@@ -33,6 +36,8 @@ export async function updateThemeAccentHex(formData: FormData): Promise<{ error?
 }
 
 export async function resetThemeAccent(): Promise<{ error?: string }> {
+  const gate = await gateModulePageAction("settings", "overview", "edit");
+  if (!gate.ok) return { error: gate.error };
   const supabase = await createClient();
   const {
     data: { user },

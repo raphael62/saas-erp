@@ -1,18 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
-
-async function getOrganizationId() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, error: ctx.error as "Unauthorized" | "No organization", orgId: null };
-  return { supabase: ctx.supabase, error: null, orgId: ctx.orgId };
-}
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 export async function addLocation(formData: FormData) {
-  const { supabase, error, orgId } = await getOrganizationId();
-  if (error || !orgId) return { error: error ?? "No organization" };
+  const gate = await gateModulePageAction("settings", "location-management", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const code = ((formData.get("code") as string) || "").trim();
   const name = ((formData.get("name") as string) || "").trim();
@@ -47,8 +41,9 @@ export async function addLocation(formData: FormData) {
 }
 
 export async function updateLocation(id: string, formData: FormData) {
-  const { supabase, error, orgId } = await getOrganizationId();
-  if (error || !orgId) return { error: error ?? "No organization" };
+  const gate = await gateModulePageAction("settings", "location-management", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const code = ((formData.get("code") as string) || "").trim();
   const name = ((formData.get("name") as string) || "").trim();
@@ -86,8 +81,9 @@ export async function updateLocation(id: string, formData: FormData) {
 }
 
 export async function deleteLocation(id: string) {
-  const { supabase, error, orgId } = await getOrganizationId();
-  if (error || !orgId) return { error: error ?? "No organization" };
+  const gate = await gateModulePageAction("settings", "location-management", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { error: deleteError } = await supabase
     .from("locations")

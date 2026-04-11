@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 import { reassignInventoryDeltaFromDefaultLocation } from "@/lib/inventory-location-balances";
 
 type PurchaseLineInput = {
@@ -20,13 +21,6 @@ type PurchaseLineInput = {
   tax_inc_value: number;
   empties_value: number;
 };
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
 
 function parseNumber(value: FormDataEntryValue | null, fallback = 0) {
   const raw = String(value ?? "").replace(/,/g, "").trim();
@@ -193,10 +187,16 @@ function incrementNumericString(raw: string) {
 }
 
 export async function savePurchaseInvoice(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const idForGate = String(formData.get("id") ?? "").trim();
+  const gate = await gateModulePageAction(
+    "purchases",
+    "purchase-invoices",
+    idForGate ? "edit" : "create"
+  );
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
-  const id = String(formData.get("id") ?? "").trim() || null;
+  const id = idForGate || null;
   const supplierId = String(formData.get("supplier_id") ?? "").trim() || null;
   const locationId = String(formData.get("location_id") ?? "").trim() || null;
   const invoiceDate = String(formData.get("invoice_date") ?? "").trim();
@@ -363,8 +363,9 @@ export async function savePurchaseInvoice(formData: FormData) {
 }
 
 export async function deletePurchaseInvoice(id: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("purchases", "purchase-invoices", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const invoiceId = String(id ?? "").trim();
   if (!invoiceId) return { error: "Missing invoice id." };

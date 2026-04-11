@@ -1,7 +1,7 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 const TABLES = [
   "brand_categories",
@@ -20,10 +20,9 @@ export async function addMasterDataRow(
   table: TableName,
   formData: FormData
 ) {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateModulePageAction("settings", "master-data", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const code = (formData.get("code") as string)?.trim();
   const name = (formData.get("name") as string)?.trim();
@@ -50,10 +49,9 @@ export async function updateMasterDataRow(
   id: string,
   formData: FormData
 ) {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
+  const gate = await gateModulePageAction("settings", "master-data", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
 
   const code = (formData.get("code") as string)?.trim();
   const name = (formData.get("name") as string)?.trim();
@@ -75,8 +73,10 @@ export async function updateMasterDataRow(
 }
 
 export async function deleteMasterDataRow(table: TableName, id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from(table).delete().eq("id", id);
+  const gate = await gateModulePageAction("settings", "master-data", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
+  const { error } = await supabase.from(table).delete().eq("id", id).eq("organization_id", orgId);
   if (error) return { error: error.message };
   revalidatePath("/dashboard/settings/master-data");
   return { ok: true };

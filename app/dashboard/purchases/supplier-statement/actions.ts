@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 export type SupplierStatementFilter = "all" | "products" | "empties";
 
@@ -55,13 +55,6 @@ function clamp2(value: number) {
 
 function normalizeDate(input: string | null | undefined) {
   return String(input ?? "").slice(0, 10);
-}
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
 }
 
 type RawTx = {
@@ -195,8 +188,9 @@ function purchaseInvoiceIdFromEmptiesSourceId(sourceId: string): string | null {
 }
 
 export async function getSupplierStatement(fromDateInput: string, toDateInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("purchases", "supplier-statement", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const fromDate = normalizeDate(fromDateInput);
   const toDate = normalizeDate(toDateInput);
@@ -370,8 +364,9 @@ export async function getSupplierStatementTransactions(
   toDateInput: string,
   filter: SupplierStatementFilter = "all"
 ) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("purchases", "supplier-statement", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const supplierId = String(supplierIdInput ?? "").trim();
   const fromDate = normalizeDate(fromDateInput);

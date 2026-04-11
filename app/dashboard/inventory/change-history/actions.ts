@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 import { ITEM_CATEGORY_PRESET_LABELS } from "@/lib/inventory-change-history-presets";
 import { clamp2, dayBefore, productIdForDb, productIdKey, purchaseLineCtn } from "@/lib/inventory-stock-snapshots";
 
@@ -313,10 +314,15 @@ export async function getInventoryChangeHistory(
   toStr?: string | null,
   options?: ChangeHistoryQueryOptions
 ): Promise<{ rows: ChangeHistoryRow[]; from: string; to: string; error?: string }> {
-  const supabase = await createClient();
   const d = defaultRange();
   const from = fromStr && /^\d{4}-\d{2}-\d{2}$/.test(fromStr) ? fromStr : d.from;
   const to = toStr && /^\d{4}-\d{2}-\d{2}$/.test(toStr) ? toStr : d.to;
+
+  const gate = await gateModulePageAction("inventory", "change-history", "view");
+  if (!gate.ok) return { rows: [], from, to, error: gate.error };
+  if (orgId !== gate.orgId) return { rows: [], from, to, error: "Unauthorized" };
+
+  const supabase = gate.supabase;
 
   let prodQuery = supabase
     .from("products")

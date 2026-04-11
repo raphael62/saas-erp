@@ -2,21 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 const ACCOUNT_TYPES = ["bank", "cash"] as const;
 
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
-
 export async function savePaymentAccount(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = (formData.get("id") as string)?.trim() || null;
+  const gate = await gateModulePageAction("accounting", "payment-accounts", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const chart_of_account_id = (formData.get("chart_of_account_id") as string)?.trim() || null;
   const code = (formData.get("code") as string)?.trim();
   const name = (formData.get("name") as string)?.trim();
@@ -60,8 +54,9 @@ export async function savePaymentAccount(formData: FormData) {
 }
 
 export async function deletePaymentAccount(id: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("accounting", "payment-accounts", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { error: delErr } = await supabase
     .from("payment_accounts")

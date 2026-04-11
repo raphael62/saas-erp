@@ -6,6 +6,7 @@ import {
   applyLocationTransferLines,
   reverseLocationTransferLines,
 } from "@/lib/inventory-location-balances";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 function normalizeDate(input: string | null | undefined) {
   return String(input ?? "").slice(0, 10);
@@ -44,8 +45,9 @@ async function generateTransferNo(
 }
 
 export async function getSuggestedLocationTransferNo(transferDateInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("inventory", "location-transfers", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const transferDate = normalizeDate(transferDateInput);
   if (!transferDate) return { error: "Transfer Date is required." };
@@ -73,10 +75,10 @@ export type SaveLocationTransferInput = {
 };
 
 export async function saveLocationTransfer(input: SaveLocationTransferInput) {
-  const { supabase, orgId, userId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(input.id ?? "").trim();
+  const gate = await gateModulePageAction("inventory", "location-transfers", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId, userId } = gate;
   const request_date = normalizeDate(input.request_date);
   const transfer_date_raw = normalizeDate(input.transfer_date);
   const transfer_date = transfer_date_raw || request_date;
@@ -231,8 +233,9 @@ export async function saveLocationTransfer(input: SaveLocationTransferInput) {
 }
 
 export async function deleteLocationTransfer(idInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("inventory", "location-transfers", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const id = String(idInput ?? "").trim();
   if (!id) return { error: "Transfer ID is required." };

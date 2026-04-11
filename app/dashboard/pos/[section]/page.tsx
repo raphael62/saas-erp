@@ -1,6 +1,12 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfileWithOrg, requireOrgId } from "@/lib/org-context";
+import {
+  getUserTransactionScope,
+  filterLocationsByScope,
+  filterSalesRepsByScope,
+  TRANSACTION_SCOPE_UNRESTRICTED,
+} from "@/lib/user-transaction-scope";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 import { NewPOSSale } from "@/components/pos/new-pos-sale";
 import { SsrTargets } from "@/components/pos/ssr-targets";
@@ -100,6 +106,23 @@ export default async function POSSectionPage({
     const promotionRulesData = promotionRulesRes.data;
     const priceTypes = (priceTypesRes.data ?? []) as Array<{ name?: string }>;
 
+    const scope = await getUserTransactionScope(supabase, user.id, orgId);
+    const repsFiltered = filterSalesRepsByScope(
+      scope,
+      (repsRes.data ?? []) as Array<{ id: string; code?: string | null; name: string }>
+    );
+    const locsFiltered = filterLocationsByScope(
+      scope,
+      (locationsRes.data ?? []) as Array<{ id: string; code?: string | null; name: string; phone?: string | null }>
+    );
+    const initialLocationId = scope.unrestricted
+      ? ""
+      : scope.defaultLocationId && locsFiltered.some((l) => l.id === scope.defaultLocationId)
+        ? scope.defaultLocationId
+        : locsFiltered[0]?.id ?? "";
+    const initialSalesRepId =
+      !scope.unrestricted && scope.restrictByRep && scope.linkedSalesRepId ? scope.linkedSalesRepId : "";
+
     // Ensure empties products (e.g. Physical Empties) are in the list for sale/refund
     const baseProducts = (productsRes.data ?? []) as Array<{ id: string; code?: string | null; name: string }>;
     const emptiesRes = await fetchSafe(() =>
@@ -125,8 +148,10 @@ export default async function POSSectionPage({
       <div className="min-h-[400px] space-y-4">
         <NewPOSSale
           customers={(customersRes.data ?? []) as Parameters<typeof NewPOSSale>[0]["customers"]}
-          salesReps={(repsRes.data ?? []) as Parameters<typeof NewPOSSale>[0]["salesReps"]}
-          locations={(locationsRes.data ?? []) as Parameters<typeof NewPOSSale>[0]["locations"]}
+          salesReps={repsFiltered as Parameters<typeof NewPOSSale>[0]["salesReps"]}
+          locations={locsFiltered as Parameters<typeof NewPOSSale>[0]["locations"]}
+          initialLocationId={initialLocationId}
+          initialSalesRepId={initialSalesRepId}
           products={productsMerged as Parameters<typeof NewPOSSale>[0]["products"]}
           priceTypes={priceTypes as Parameters<typeof NewPOSSale>[0]["priceTypes"]}
           priceLists={(priceListsRes.data ?? []) as Parameters<typeof NewPOSSale>[0]["priceLists"]}
@@ -157,7 +182,14 @@ export default async function POSSectionPage({
       );
     }
     const supabase = await createClient();
-    const locations = (await supabase.from("locations").select("id, code, name").eq("organization_id", orgId).eq("is_active", true).order("code")).data ?? [];
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const locsRaw =
+      (await supabase.from("locations").select("id, code, name").eq("organization_id", orgId).eq("is_active", true).order("code"))
+        .data ?? [];
+    const scope = user?.id ? await getUserTransactionScope(supabase, user.id, orgId) : TRANSACTION_SCOPE_UNRESTRICTED;
+    const locations = filterLocationsByScope(scope, locsRaw as Array<{ id: string; code?: string | null; name: string }>);
 
     return (
       <div className="space-y-4">
@@ -184,12 +216,21 @@ export default async function POSSectionPage({
     }
 
     const supabase = await createClient();
+    const {
+      data: { user: parkedUser },
+    } = await supabase.auth.getUser();
     const [customersRes, locationsRes] = await Promise.all([
       supabase.from("customers").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("name"),
       supabase.from("locations").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("code"),
     ]);
     const customers = (customersRes.data ?? []) as Array<{ id: string; name: string }>;
-    const locations = (locationsRes.data ?? []) as Array<{ id: string; name: string }>;
+    const parkedScope = parkedUser?.id
+      ? await getUserTransactionScope(supabase, parkedUser.id, orgId)
+      : TRANSACTION_SCOPE_UNRESTRICTED;
+    const locations = filterLocationsByScope(
+      parkedScope,
+      (locationsRes.data ?? []) as Array<{ id: string; name: string }>
+    );
 
     return (
       <div className="space-y-4">

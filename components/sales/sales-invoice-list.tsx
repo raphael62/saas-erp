@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { deleteSalesInvoice } from "@/app/dashboard/sales/sales-invoices/actions";
 import { SalesInvoiceFormDialog } from "@/components/sales/sales-invoice-form-dialog";
-import { useSalesCapabilities } from "@/components/sales/sales-capability-provider";
+import { useSalesCapabilities } from "@/components/dashboard/route-capability-provider";
 
 type Invoice = {
   id: string;

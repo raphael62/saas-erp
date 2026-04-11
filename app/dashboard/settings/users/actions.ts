@@ -1,31 +1,7 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { hasFullAccess } from "@/lib/roles";
-
-async function getContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) {
-    const isUnauth = ctx.error === "Unauthorized";
-    return {
-      error: isUnauth ? ("Unauthorized" as const) : ("No organization" as const),
-      supabase: isUnauth ? null : ctx.supabase,
-      userId: ctx.userId ?? null,
-      orgId: null,
-    };
-  }
-  const { userId, orgId, supabase } = ctx;
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", userId).single();
-  const role = (profile as { role?: string | null } | null)?.role ?? null;
-  const { data: org } = await supabase.from("organizations").select("created_by").eq("id", orgId).single();
-  const isOwner = (org as { created_by?: string | null } | null)?.created_by === userId;
-  const canManage = hasFullAccess(role) || isOwner;
-  if (!canManage)
-    return { error: "Forbidden" as const, supabase: null, userId, orgId: null };
-  return { error: null, supabase, userId, orgId };
-}
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 export type UserRow = {
   id: string;
@@ -44,14 +20,14 @@ export type UserRow = {
 export type RoleOption = { id: string; name: string };
 
 export async function listUsers(): Promise<{ users: UserRow[]; error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { users: [], error: ctx.error };
-  if (!ctx.supabase || !ctx.orgId) return { users: [] };
+  const gate = await gateModulePageAction("settings", "users", "view");
+  if (!gate.ok) return { users: [], error: gate.error };
+  const { supabase, orgId } = gate;
 
-  const { data: profiles, error: profError } = await ctx.supabase
+  const { data: profiles, error: profError } = await supabase
     .from("profiles")
     .select("id, user_code, full_name, email, phone, role_id")
-    .eq("organization_id", ctx.orgId)
+    .eq("organization_id", orgId)
     .order("full_name");
 
   if (profError) return { users: [], error: profError.message };
@@ -67,7 +43,7 @@ export async function listUsers(): Promise<{ users: UserRow[]; error?: string }>
   }[];
 
   const profileIds = profList.map((p) => p.id);
-  const { data: prLinks } = await ctx.supabase
+  const { data: prLinks } = await supabase
     .from("profile_roles")
     .select("profile_id, role_id")
     .in("profile_id", profileIds);
@@ -91,7 +67,7 @@ export async function listUsers(): Promise<{ users: UserRow[]; error?: string }>
   let roleMap: Record<string, string> = {};
   const allRids = [...allRidSet];
   if (allRids.length > 0) {
-    const { data: roles } = await ctx.supabase.from("roles").select("id, name").in("id", allRids);
+    const { data: roles } = await supabase.from("roles").select("id, name").in("id", allRids);
     roleMap = (roles ?? []).reduce<Record<string, string>>((acc, r) => {
       acc[r.id] = r.name;
       return acc;
@@ -122,14 +98,14 @@ export async function listUsers(): Promise<{ users: UserRow[]; error?: string }>
 }
 
 export async function listRolesForSelect(): Promise<{ roles: RoleOption[]; error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { roles: [], error: ctx.error };
-  if (!ctx.supabase || !ctx.orgId) return { roles: [] };
+  const gate = await gateModulePageAction("settings", "users", "view");
+  if (!gate.ok) return { roles: [], error: gate.error };
+  const { supabase, orgId } = gate;
 
-  const { data: roles, error } = await ctx.supabase
+  const { data: roles, error } = await supabase
     .from("roles")
     .select("id, name")
-    .eq("organization_id", ctx.orgId)
+    .eq("organization_id", orgId)
     .eq("is_active", true)
     .order("name");
 
@@ -140,9 +116,9 @@ export async function listRolesForSelect(): Promise<{ roles: RoleOption[]; error
 }
 
 export async function inviteUser(email: string, fullName?: string): Promise<{ error?: string; code?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { error: ctx.error };
-  if (!ctx.supabase || !ctx.orgId) return { error: "No organization" };
+  const gate = await gateModulePageAction("settings", "users", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId } = gate;
 
   const trimmed = email?.trim();
   if (!trimmed) return { error: "Email is required" };
@@ -154,14 +130,14 @@ export async function inviteUser(email: string, fullName?: string): Promise<{ er
     const { data: org } = await admin
       .from("organizations")
       .select("code")
-      .eq("id", ctx.orgId)
+      .eq("id", orgId)
       .single();
     const code = (org as { code?: string } | null)?.code ?? null;
 
     const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/auth/callback`;
     const { data, error } = await admin.auth.admin.inviteUserByEmail(trimmed, {
       data: {
-        organization_id: ctx.orgId,
+        organization_id: orgId,
         full_name: fullName?.trim() ?? "",
         company_code: code ?? "",
       },
@@ -172,7 +148,7 @@ export async function inviteUser(email: string, fullName?: string): Promise<{ er
 
     const userId = data?.user?.id;
     if (userId) {
-      await admin.from("profiles").update({ organization_id: ctx.orgId, full_name: fullName?.trim() || null }).eq("id", userId);
+      await admin.from("profiles").update({ organization_id: orgId, full_name: fullName?.trim() || null }).eq("id", userId);
     }
 
     revalidatePath("/dashboard/settings/users");
@@ -207,9 +183,9 @@ export async function updateUserRole(
   userId: string,
   roleId: string | null
 ): Promise<{ error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { error: ctx.error };
-  if (!ctx.orgId) return { error: "No organization" };
+  const gate = await gateModulePageAction("settings", "users", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId } = gate;
 
   try {
     const { createAdminClient } = await import("@/lib/supabase/admin");
@@ -219,16 +195,16 @@ export async function updateUserRole(
       .select("organization_id")
       .eq("id", userId)
       .single();
-    if (!profile || (profile as { organization_id: string }).organization_id !== ctx.orgId) {
+    if (!profile || (profile as { organization_id: string }).organization_id !== orgId) {
       return { error: "User not found in your organization." };
     }
 
-    await replaceProfileRoles(admin, ctx.orgId, userId, roleId ? [roleId] : []);
+    await replaceProfileRoles(admin, orgId, userId, roleId ? [roleId] : []);
     const { error } = await admin
       .from("profiles")
       .update({ role_id: roleId })
       .eq("id", userId)
-      .eq("organization_id", ctx.orgId);
+      .eq("organization_id", orgId);
     if (error) return { error: error.message };
     revalidatePath("/dashboard/settings/users");
     revalidatePath("/dashboard/settings/roles-permissions");
@@ -246,27 +222,27 @@ export async function listProvisioningPicklists(): Promise<{
   salesReps: ProvisioningPickItem[];
   error?: string;
 }> {
-  const ctx = await getContext();
-  if (ctx.error) return { locations: [], paymentAccounts: [], salesReps: [], error: ctx.error };
-  if (!ctx.supabase || !ctx.orgId) return { locations: [], paymentAccounts: [], salesReps: [] };
+  const gate = await gateModulePageAction("settings", "users", "view");
+  if (!gate.ok) return { locations: [], paymentAccounts: [], salesReps: [], error: gate.error };
+  const { supabase, orgId } = gate;
 
   const [locRes, paRes, srRes] = await Promise.all([
-    ctx.supabase
+    supabase
       .from("locations")
       .select("id, code, name")
-      .eq("organization_id", ctx.orgId)
+      .eq("organization_id", orgId)
       .eq("is_active", true)
       .order("code"),
-    ctx.supabase
+    supabase
       .from("payment_accounts")
       .select("id, code, name")
-      .eq("organization_id", ctx.orgId)
+      .eq("organization_id", orgId)
       .eq("is_active", true)
       .order("code"),
-    ctx.supabase
+    supabase
       .from("sales_reps")
       .select("id, code, name")
-      .eq("organization_id", ctx.orgId)
+      .eq("organization_id", orgId)
       .eq("is_active", true)
       .order("name"),
   ]);
@@ -303,9 +279,9 @@ export async function getUserProvisioningDetail(userId: string): Promise<{
   detail?: UserProvisioningDetail;
   error?: string;
 }> {
-  const ctx = await getContext();
-  if (ctx.error) return { error: ctx.error };
-  if (!ctx.orgId) return { error: "No organization" };
+  const gate = await gateModulePageAction("settings", "users", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId } = gate;
 
   try {
     const { createAdminClient } = await import("@/lib/supabase/admin");
@@ -319,7 +295,7 @@ export async function getUserProvisioningDetail(userId: string): Promise<{
       .eq("id", userId)
       .single();
     if (pErr || !profile) return { error: pErr?.message ?? "User not found" };
-    if ((profile as { organization_id?: string }).organization_id !== ctx.orgId) {
+    if ((profile as { organization_id?: string }).organization_id !== orgId) {
       return { error: "User not in your organization" };
     }
 
@@ -327,18 +303,18 @@ export async function getUserProvisioningDetail(userId: string): Promise<{
       .from("profile_user_locations")
       .select("location_id")
       .eq("profile_id", userId)
-      .eq("organization_id", ctx.orgId);
+      .eq("organization_id", orgId);
     const { data: payRows } = await admin
       .from("profile_payment_accounts")
       .select("payment_account_id")
       .eq("profile_id", userId)
-      .eq("organization_id", ctx.orgId);
+      .eq("organization_id", orgId);
 
     const { data: roleRows } = await admin
       .from("profile_roles")
       .select("role_id")
       .eq("profile_id", userId)
-      .eq("organization_id", ctx.orgId);
+      .eq("organization_id", orgId);
 
     const pr = profile as {
       id: string;
@@ -491,9 +467,9 @@ async function replaceProfileJoins(
 export async function createProvisionedUser(
   input: CreateProvisionedUserInput
 ): Promise<{ error?: string; userId?: string; companyCode?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { error: ctx.error };
-  if (!ctx.supabase || !ctx.orgId) return { error: "No organization" };
+  const gate = await gateModulePageAction("settings", "users", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId } = gate;
 
   const email = input.email?.trim().toLowerCase();
   const userCode = input.userCode?.trim();
@@ -507,20 +483,20 @@ export async function createProvisionedUser(
     const { createAdminClient } = await import("@/lib/supabase/admin");
     const admin = createAdminClient();
 
-    const { data: org } = await admin.from("organizations").select("code").eq("id", ctx.orgId).single();
+    const { data: org } = await admin.from("organizations").select("code").eq("id", orgId).single();
     const companyCode = (org as { code?: string } | null)?.code ?? "";
 
     const dup = await admin
       .from("profiles")
       .select("id")
-      .eq("organization_id", ctx.orgId)
+      .eq("organization_id", orgId)
       .ilike("user_code", userCode)
       .maybeSingle();
     if (dup.data) return { error: "User code is already used in your organization." };
 
     let roleIds: string[] = [];
     if (input.makeAdmin) {
-      const adminRid = await resolveAdminRoleId(admin, ctx.orgId);
+      const adminRid = await resolveAdminRoleId(admin, orgId);
       roleIds = adminRid ? [adminRid] : [];
     } else {
       roleIds = [...new Set(input.roleIds)];
@@ -528,7 +504,7 @@ export async function createProvisionedUser(
 
     const idErr = await assertIdsBelongToOrg(
       admin,
-      ctx.orgId,
+      orgId,
       roleIds,
       input.locationIds,
       input.paymentAccountIds,
@@ -546,7 +522,7 @@ export async function createProvisionedUser(
       password: input.password,
       email_confirm: true,
       user_metadata: {
-        organization_id: ctx.orgId,
+        organization_id: orgId,
         full_name: fullName,
         company_code: companyCode,
       },
@@ -560,10 +536,10 @@ export async function createProvisionedUser(
     const userId = created.user?.id;
     if (!userId) return { error: "User was not created." };
 
-    const { error: upErr } = await admin
+       const { error: upErr } = await admin
       .from("profiles")
       .update({
-        organization_id: ctx.orgId,
+        organization_id: orgId,
         full_name: fullName,
         email,
         user_code: userCode,
@@ -579,8 +555,8 @@ export async function createProvisionedUser(
       return { error: upErr.message };
     }
 
-    await replaceProfileJoins(admin, ctx.orgId, userId, input.locationIds, input.paymentAccountIds);
-    await replaceProfileRoles(admin, ctx.orgId, userId, roleIds);
+    await replaceProfileJoins(admin, orgId, userId, input.locationIds, input.paymentAccountIds);
+    await replaceProfileRoles(admin, orgId, userId, roleIds);
 
     if (input.sendPasswordResetEmail) {
       const { createClient } = await import("@supabase/supabase-js");
@@ -618,9 +594,9 @@ export type UpdateProvisionedUserInput = {
 };
 
 export async function updateProvisionedUser(input: UpdateProvisionedUserInput): Promise<{ error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { error: ctx.error };
-  if (!ctx.orgId) return { error: "No organization" };
+  const gate = await gateModulePageAction("settings", "users", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId } = gate;
 
   const userCode = input.userCode?.trim();
   const fullName = input.fullName?.trim();
@@ -637,14 +613,14 @@ export async function updateProvisionedUser(input: UpdateProvisionedUserInput): 
       .eq("id", input.userId)
       .single();
     if (pErr || !profile) return { error: "User not found" };
-    if ((profile as { organization_id: string }).organization_id !== ctx.orgId) {
+    if ((profile as { organization_id: string }).organization_id !== orgId) {
       return { error: "User not in your organization" };
     }
 
     const { data: dup } = await admin
       .from("profiles")
       .select("id")
-      .eq("organization_id", ctx.orgId)
+      .eq("organization_id", orgId)
       .ilike("user_code", userCode)
       .neq("id", input.userId)
       .maybeSingle();
@@ -652,7 +628,7 @@ export async function updateProvisionedUser(input: UpdateProvisionedUserInput): 
 
     let roleIds: string[] = [];
     if (input.makeAdmin) {
-      const adminRid = await resolveAdminRoleId(admin, ctx.orgId);
+      const adminRid = await resolveAdminRoleId(admin, orgId);
       roleIds = adminRid ? [adminRid] : [];
     } else {
       roleIds = [...new Set(input.roleIds)];
@@ -660,7 +636,7 @@ export async function updateProvisionedUser(input: UpdateProvisionedUserInput): 
 
     const idErr = await assertIdsBelongToOrg(
       admin,
-      ctx.orgId,
+      orgId,
       roleIds,
       input.locationIds,
       input.paymentAccountIds,
@@ -684,11 +660,11 @@ export async function updateProvisionedUser(input: UpdateProvisionedUserInput): 
         linked_sales_rep_id: input.salesRepId,
       })
       .eq("id", input.userId)
-      .eq("organization_id", ctx.orgId);
+      .eq("organization_id", orgId);
     if (upErr) return { error: upErr.message };
 
-    await replaceProfileJoins(admin, ctx.orgId, input.userId, input.locationIds, input.paymentAccountIds);
-    await replaceProfileRoles(admin, ctx.orgId, input.userId, roleIds);
+    await replaceProfileJoins(admin, orgId, input.userId, input.locationIds, input.paymentAccountIds);
+    await replaceProfileRoles(admin, orgId, input.userId, roleIds);
 
     revalidatePath("/dashboard/settings/users");
     return {};
@@ -701,11 +677,11 @@ export async function adminSetUserPassword(
   userId: string,
   newPassword: string
 ): Promise<{ error?: string }> {
-  const ctx = await getContext();
-  if (ctx.error) return { error: ctx.error };
-  if (!ctx.orgId) return { error: "No organization" };
+  const gate = await gateModulePageAction("settings", "users", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, userId: actorId } = gate;
   if (!newPassword || newPassword.length < 8) return { error: "Password must be at least 8 characters." };
-  if (userId === ctx.userId) return { error: "Use account settings to change your own password." };
+  if (userId === actorId) return { error: "Use account settings to change your own password." };
 
   try {
     const { createAdminClient } = await import("@/lib/supabase/admin");
@@ -715,7 +691,7 @@ export async function adminSetUserPassword(
       .select("organization_id")
       .eq("id", userId)
       .single();
-    if (!profile || (profile as { organization_id: string }).organization_id !== ctx.orgId) {
+    if (!profile || (profile as { organization_id: string }).organization_id !== orgId) {
       return { error: "User not found in your organization." };
     }
     const { error } = await admin.auth.admin.updateUserById(userId, { password: newPassword });

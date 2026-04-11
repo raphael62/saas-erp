@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 function normalizeDate(input: string | null | undefined) {
   return String(input ?? "").slice(0, 10);
@@ -9,13 +10,6 @@ function normalizeDate(input: string | null | undefined) {
 
 function clamp2(value: number) {
   return Number(value.toFixed(2));
-}
-
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, userId: ctx.userId ?? null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, userId: ctx.userId, error: null as string | null };
 }
 
 async function generateTransferNo(
@@ -40,8 +34,9 @@ async function generateTransferNo(
 }
 
 export async function getSuggestedTransferNo(transferDateInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("accounting", "bank-transfers", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const transferDate = normalizeDate(transferDateInput);
   if (!transferDate) return { error: "Transfer Date is required." };
@@ -61,10 +56,10 @@ export type SaveBankTransferInput = {
 };
 
 export async function saveBankTransfer(input: SaveBankTransferInput) {
-  const { supabase, orgId, userId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(input.id ?? "").trim();
+  const gate = await gateModulePageAction("accounting", "bank-transfers", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId, userId } = gate;
   const transfer_date = normalizeDate(input.transfer_date);
   const from_account_id = String(input.from_account_id ?? "").trim();
   const to_account_id = String(input.to_account_id ?? "").trim();
@@ -110,8 +105,9 @@ export async function saveBankTransfer(input: SaveBankTransferInput) {
 }
 
 export async function deleteBankTransfer(idInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("accounting", "bank-transfers", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const id = String(idInput ?? "").trim();
   if (!id) return { error: "Transfer ID is required." };

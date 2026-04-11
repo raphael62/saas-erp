@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 const ACCOUNT_TYPES = [
   "Asset",
@@ -12,18 +13,11 @@ const ACCOUNT_TYPES = [
   "Expense",
 ] as const;
 
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
-
 export async function saveChartOfAccount(formData: FormData) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = (formData.get("id") as string)?.trim() || null;
+  const gate = await gateModulePageAction("accounting", "chart-of-accounts", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const parent_id = (formData.get("parent_id") as string)?.trim() || null;
   const account_code = (formData.get("account_code") as string)?.trim();
   const account_name = (formData.get("account_name") as string)?.trim();
@@ -74,8 +68,9 @@ export async function saveChartOfAccount(formData: FormData) {
 }
 
 export async function deleteChartOfAccount(id: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("accounting", "chart-of-accounts", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const { error: delErr } = await supabase
     .from("chart_of_accounts")

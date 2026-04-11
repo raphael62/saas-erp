@@ -1,7 +1,7 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 function parseOptional(value: FormDataEntryValue | null) {
   const v = String(value ?? "").trim();
@@ -27,12 +27,10 @@ function parsePaymentTerms(value: FormDataEntryValue | null) {
 }
 
 export async function saveSupplier(formData: FormData) {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { error: ctx.error };
-  const { orgId, supabase } = ctx;
-
   const id = String(formData.get("id") ?? "").trim() || null;
+  const gate = await gateModulePageAction("purchases", "suppliers", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { orgId, supabase } = gate;
   const code = parseOptional(formData.get("code"));
   const name = String(formData.get("name") ?? "").trim();
   const category = parseOptional(formData.get("category"));
@@ -99,8 +97,10 @@ export async function saveSupplier(formData: FormData) {
 }
 
 export async function deleteSupplier(id: string) {
-  const supabase = await createClient();
-  const { error } = await supabase.from("suppliers").delete().eq("id", id);
+  const gate = await gateModulePageAction("purchases", "suppliers", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
+  const { error } = await supabase.from("suppliers").delete().eq("id", id).eq("organization_id", orgId);
   if (error) return { error: error.message };
   revalidatePath("/dashboard/purchases/suppliers");
   revalidatePath("/dashboard/purchases");
@@ -109,11 +109,14 @@ export async function deleteSupplier(id: string) {
 }
 
 export async function toggleSupplierActive(id: string, nextActive: boolean) {
-  const supabase = await createClient();
+  const gate = await gateModulePageAction("purchases", "suppliers", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const { error } = await supabase
     .from("suppliers")
     .update({ is_active: nextActive })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("organization_id", orgId);
   if (error) return { error: error.message };
   revalidatePath("/dashboard/purchases/suppliers");
   revalidatePath("/dashboard/purchases");

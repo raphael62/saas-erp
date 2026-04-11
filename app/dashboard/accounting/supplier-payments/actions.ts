@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { gateModulePageAction } from "@/lib/mutation-gate";
 
 type SavePaymentInput = {
   id?: string;
@@ -43,13 +44,6 @@ function clamp2(value: number) {
   return Number(value.toFixed(2));
 }
 
-async function getOrgContext() {
-  const { getOrgContextForAction } = await import("@/lib/org-context");
-  const ctx = await getOrgContextForAction();
-  if (!ctx.ok) return { supabase: ctx.supabase, orgId: null as string | null, error: ctx.error };
-  return { supabase: ctx.supabase, orgId: ctx.orgId, error: null as string | null };
-}
-
 async function generatePaymentNo(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orgId: string,
@@ -72,8 +66,9 @@ async function generatePaymentNo(
 }
 
 export async function getSuggestedPaymentNo(paymentDateInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("accounting", "supplier-payments", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const paymentDate = normalizeDate(paymentDateInput);
   if (!paymentDate) return { error: "Transaction Date is required." };
@@ -87,8 +82,9 @@ export async function getSupplierOutstanding(
   asOfDateInput?: string,
   excludePaymentIdInput?: string
 ) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("accounting", "supplier-payments", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const supplierId = String(supplierIdInput ?? "").trim();
   if (!supplierId) return { error: "Supplier is required." };
@@ -100,7 +96,7 @@ export async function getSupplierOutstanding(
     .eq("supplier_id", supplierId)
     .gt("balance_os", 0);
 
-  const totalOwed = (invoices ?? []).reduce(
+  const totalOwed = (invoices ?? []).reduce<number>(
     (sum, row) => clamp2(sum + Number((row as { balance_os?: number }).balance_os ?? 0)),
     0
   );
@@ -109,8 +105,9 @@ export async function getSupplierOutstanding(
 }
 
 export async function getOutstandingInvoices(supplierIdInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("accounting", "supplier-payments", "view");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const supplierId = String(supplierIdInput ?? "").trim();
   if (!supplierId) return { error: "Supplier is required." };
@@ -146,10 +143,10 @@ async function adjustInvoiceBalance(
 }
 
 export async function saveSupplierPayment(input: SavePaymentInput) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
-
   const id = String(input.id ?? "").trim();
+  const gate = await gateModulePageAction("accounting", "supplier-payments", id ? "edit" : "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
   const supplier_id = String(input.supplier_id ?? "").trim();
   const payment_date = normalizeDate(input.payment_date);
   const bank_date = normalizeDate(input.bank_date || input.payment_date);
@@ -228,8 +225,9 @@ export async function saveSupplierPayment(input: SavePaymentInput) {
 }
 
 export async function saveBatchSupplierPayment(input: BatchPaymentInput) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("accounting", "supplier-payments", "create");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const supplier_id = String(input.supplier_id ?? "").trim();
   const payment_date = normalizeDate(input.payment_date);
@@ -278,8 +276,9 @@ export async function saveBatchSupplierPayment(input: BatchPaymentInput) {
 }
 
 export async function deleteSupplierPayment(idInput: string) {
-  const { supabase, orgId, error } = await getOrgContext();
-  if (error || !orgId) return { error: error ?? "Unauthorized" };
+  const gate = await gateModulePageAction("accounting", "supplier-payments", "delete");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId } = gate;
 
   const id = String(idInput ?? "").trim();
   if (!id) return { error: "Payment ID is required." };
