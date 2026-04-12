@@ -69,8 +69,9 @@ export function ParkedSalesList({
         const raw = window.localStorage.getItem(key);
         if (!raw) continue;
         const payload = JSON.parse(raw) as ParkedPayload;
-        const customerName =
-          customers.find((c) => c.id === payload.customerId)?.name ?? "Walk-in";
+        const customerName = payload.customerId
+          ? customers.find((c) => c.id === payload.customerId)?.name ?? "—"
+          : "—";
         const locationName =
           locations.find((l) => l.id === payload.locationId)?.name ?? "—";
         const total: number = Number.isFinite(payload.grandTotal) ? (payload.grandTotal ?? 0) : 0;

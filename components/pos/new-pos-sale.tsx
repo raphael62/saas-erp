@@ -71,7 +71,7 @@ type Product = {
   returnable?: boolean | null;
 };
 
-type Customer = { id: string; name: string; tax_id?: string | null };
+type Customer = { id: string; name: string; tax_id?: string | null; sales_rep_id?: string | null };
 type SalesRep = { id: string; code?: string | null; name: string };
 type Location = { id: string; code?: string | null; name: string; phone?: string | null };
 type PriceType = { id: string; code?: string | null; name: string };
@@ -517,7 +517,9 @@ export function NewPOSSale({
         const raw = window.localStorage.getItem(key);
         if (!raw) continue;
         const payload = JSON.parse(raw) as { saleDate?: string; customerId?: string; locationId?: string; salesRepId?: string; notes?: string; lines?: Line[]; emptiesRcvd?: Record<string, string>; grandTotal?: number; parkedAt?: string };
-        const customerName = customers.find((c) => c.id === payload.customerId)?.name ?? "Walk-in";
+        const customerName = payload.customerId
+          ? customers.find((c) => c.id === payload.customerId)?.name ?? "—"
+          : "—";
         const locationName = locations.find((l) => l.id === payload.locationId)?.name ?? "—";
         const total: number = Number.isFinite(payload.grandTotal) ? (payload.grandTotal ?? 0) : 0;
         const receiptNo = `PARK-${(payload.saleDate ?? "").replace(/-/g, "")}-${key.replace(POS_PARKED_PREFIX, "").slice(-6)}`;
@@ -588,6 +590,24 @@ export function NewPOSSale({
       });
     });
   }, [saleDate, salesRepId]);
+
+  const customersForSelectedRep = useMemo(() => {
+    const rep = salesRepId?.trim();
+    if (!rep) return [];
+    return customers.filter((c) => String(c.sales_rep_id ?? "") === rep);
+  }, [customers, salesRepId]);
+
+  useEffect(() => {
+    if (!salesRepId?.trim()) {
+      setCustomerId("");
+      return;
+    }
+    setCustomerId((prev) => {
+      if (!prev) return prev;
+      const list = customers.filter((c) => String(c.sales_rep_id ?? "") === salesRepId.trim());
+      return list.some((c) => c.id === prev) ? prev : "";
+    });
+  }, [salesRepId, customers]);
 
   const searchParams = useSearchParams();
   const resumeKey = searchParams.get("resume");
@@ -947,8 +967,8 @@ export function NewPOSSale({
   };
 
   const customerDisplay = customerId
-    ? customers.find((c) => c.id === customerId)?.name ?? "Walk-in"
-    : "Walk-in";
+    ? customers.find((c) => c.id === customerId)?.name ?? "—"
+    : "—";
 
   const hasItems = lines.some((l) => hasLineData(l));
   const grandTotalNum = totals.grand_total + emptiesDepositValue;
@@ -973,8 +993,6 @@ export function NewPOSSale({
   const todayInvoiceCount = dp?.todayInvoiceCount ?? 0;
   const dailyAchievementPct = dailyTarget > 0 ? (todaySales / dailyTarget) * 100 : 0;
   const targetReached = dailyTarget > 0 && todaySales >= dailyTarget;
-
-  const customerOptions = [{ id: "", name: "Walk-in" }, ...customers];
 
   return (
     <div className="flex flex-col gap-6 xl:flex-row">
@@ -1025,6 +1043,10 @@ export function NewPOSSale({
                   alert("Please select a Sales Rep.");
                   return;
                 }
+                if (!customerId?.trim()) {
+                  alert("Please select a customer.");
+                  return;
+                }
                 setPaymentOpen(true);
               }}
             >
@@ -1044,17 +1066,46 @@ export function NewPOSSale({
             />
           </div>
           <div>
-            <label className={labelClass}>Customer</label>
+            <label className={labelClass}>
+              Sales Rep <span className="text-destructive">*</span>
+            </label>
+            <select
+              value={salesRepId}
+              onChange={(e) => setSalesRepId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">-- Select --</option>
+              {salesReps.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.code ? `${r.code} - ${r.name}` : r.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>
+              Customer <span className="text-destructive">*</span>
+            </label>
             <select
               value={customerId}
               onChange={(e) => setCustomerId(e.target.value)}
               className={inputClass}
+              disabled={!salesRepId?.trim()}
             >
-              {customerOptions.map((c) => (
-                <option key={c.id || "walkin"} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
+              {!salesRepId?.trim() ? (
+                <option value="">Select sales rep first</option>
+              ) : customersForSelectedRep.length === 0 ? (
+                <option value="">No customers for this rep</option>
+              ) : (
+                <>
+                  <option value="">— Select customer —</option>
+                  {customersForSelectedRep.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </>
+              )}
             </select>
           </div>
           <div>
@@ -1068,23 +1119,6 @@ export function NewPOSSale({
               {locations.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.code ? `${l.code} - ${l.name}` : l.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>
-              Sales Rep <span className="text-destructive">*</span>
-            </label>
-            <select
-              value={salesRepId}
-              onChange={(e) => setSalesRepId(e.target.value)}
-              className={inputClass}
-            >
-              <option value="">-- Select --</option>
-              {salesReps.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.code ? `${r.code} - ${r.name}` : r.name}
                 </option>
               ))}
             </select>

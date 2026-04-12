@@ -89,7 +89,14 @@ export default async function POSSectionPage({
     };
 
     const [customersRes, repsRes, locationsRes, productsRes, priceTypesRes, priceListsRes, priceListItemsRes, promotionsRes, promotionRulesRes, ssrRes, paymentAccountsRes, paymentMethodsRes] = await Promise.all([
-      fetchSafe(() => supabase.from("customers").select("id, tax_id, name").eq("organization_id", orgId).eq("is_active", true).order("name")),
+      fetchSafe(() =>
+        supabase
+          .from("customers")
+          .select("id, tax_id, name, sales_rep_id")
+          .eq("organization_id", orgId)
+          .eq("is_active", true)
+          .order("name")
+      ),
       fetchSafe(() => supabase.from("sales_reps").select("id, code, name").eq("organization_id", orgId).eq("is_active", true).order("name")),
       fetchSafe(() => supabase.from("locations").select("id, code, name, phone").eq("organization_id", orgId).eq("is_active", true).order("code")),
       fetchSafe(() => supabase.from("products").select("id, code, name, category, pack_unit, unit, stock_quantity, empties_type, returnable").eq("organization_id", orgId).order("code")),
@@ -220,7 +227,7 @@ export default async function POSSectionPage({
       data: { user: parkedUser },
     } = await supabase.auth.getUser();
     const [customersRes, locationsRes] = await Promise.all([
-      supabase.from("customers").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("name"),
+      supabase.from("customers").select("id, name, sales_rep_id").eq("organization_id", orgId).eq("is_active", true).order("name"),
       supabase.from("locations").select("id, name").eq("organization_id", orgId).eq("is_active", true).order("code"),
     ]);
     const customers = (customersRes.data ?? []) as Array<{ id: string; name: string }>;

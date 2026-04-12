@@ -97,6 +97,19 @@ export async function savePosSale(input: PosSaleInput) {
   const locationId = input.locationId?.trim() || null;
   const salesRepId = input.salesRepId?.trim() || null;
   if (!salesRepId) return { error: "Sales Rep is required" };
+  if (!customerId) return { error: "Customer is required" };
+
+  const { data: customerRow, error: custErr } = await supabase
+    .from("customers")
+    .select("id, sales_rep_id")
+    .eq("id", customerId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  if (custErr || !customerRow) return { error: "Invalid customer" };
+  const custRep = String((customerRow as { sales_rep_id?: string | null }).sales_rep_id ?? "").trim();
+  if (custRep !== salesRepId) {
+    return { error: "Customer does not belong to the selected sales rep." };
+  }
 
   const scope = await getUserTransactionScope(supabase, userId, orgId);
   if (!scopeAllowsInvoiceRow(scope, locationId, salesRepId)) {

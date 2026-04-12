@@ -1,24 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Save, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { ProductStyleSearchBlobDialog } from "@/components/ui/product-style-search-blob-dialog";
 import { addSalesRep, updateSalesRep } from "@/app/dashboard/sales/sales-reps/actions";
-import {
-  SalesRepTypeSearchDialog,
-  type RepTypeItem,
-} from "@/components/sales/sales-rep-type-search-dialog";
 
 const labelClass = "mb-0.5 block text-xs font-medium";
 const inputClass = "h-8 w-full rounded border border-input bg-background px-2.5 text-sm";
 
-const DEFAULT_REP_TYPES: RepTypeItem[] = [
-  { id: "sales-team", code: "SLS", name: "Sales Team" },
-  { id: "field-agent", code: "FLD", name: "Field Agent" },
-  { id: "key-account", code: "KEY", name: "Key Account" },
-  { id: "distributor-rep", code: "DST", name: "Distributor Rep" },
-];
+const DEFAULT_REP_TYPE_NAMES = ["Sales Team", "Field Agent", "Key Account", "Distributor Rep"];
 
 type Location = { id: string; code?: string | null; name: string };
 
@@ -49,16 +41,16 @@ export function SalesRepFormDialog({
 }: SalesRepFormDialogProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [repTypes, setRepTypes] = useState<RepTypeItem[]>(DEFAULT_REP_TYPES);
+  const [repTypeLookupItems, setRepTypeLookupItems] = useState<string[]>([...DEFAULT_REP_TYPE_NAMES]);
   const [selectedRepType, setSelectedRepType] = useState("");
   const [showRepTypeDropdown, setShowRepTypeDropdown] = useState(false);
   const [showRepTypeSearch, setShowRepTypeSearch] = useState(false);
   const repTypeRef = useRef<HTMLDivElement>(null);
 
-  const filteredRepTypes = repTypes.filter(
-    (v) =>
-      v.name.toLowerCase().includes(selectedRepType.toLowerCase().trim()) ||
-      v.code.toLowerCase().includes(selectedRepType.toLowerCase().trim())
+  const filteredRepTypeOptions = useMemo(
+    () =>
+      repTypeLookupItems.filter((v) => v.toLowerCase().includes(selectedRepType.toLowerCase().trim())),
+    [repTypeLookupItems, selectedRepType]
   );
 
   useEffect(() => {
@@ -75,16 +67,17 @@ export function SalesRepFormDialog({
   useEffect(() => {
     if (!open) return;
     setError(null);
-    const initialType = initialSalesRep?.sales_rep_type ?? DEFAULT_REP_TYPES[0]?.name ?? "";
-    if (
-      initialType &&
-      !repTypes.some((v) => v.name.toLowerCase() === initialType.toLowerCase())
-    ) {
-      const generatedId = `${initialType.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`;
-      setRepTypes((prev) => [...prev, { id: generatedId, code: "", name: initialType }]);
-    }
+    const initialType =
+      (initialSalesRep?.sales_rep_type?.trim() || DEFAULT_REP_TYPE_NAMES[0] || "");
     setSelectedRepType(initialType);
-  }, [open, initialSalesRep, repTypes]);
+    setRepTypeLookupItems((prev) => {
+      const base = prev.length > 0 ? prev : [...DEFAULT_REP_TYPE_NAMES];
+      if (initialType && !base.some((x) => x.toLowerCase() === initialType.toLowerCase())) {
+        return [...base, initialType];
+      }
+      return base;
+    });
+  }, [open, initialSalesRep]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -182,7 +175,7 @@ export function SalesRepFormDialog({
               Sales Rep Type
             </label>
             <input type="hidden" name="sales_rep_type" value={selectedRepType} />
-            <div className="relative flex gap-1" ref={repTypeRef}>
+            <div className="relative flex items-center gap-1" ref={repTypeRef}>
               <input
                 value={selectedRepType}
                 onChange={(e) => {
@@ -191,32 +184,32 @@ export function SalesRepFormDialog({
                 }}
                 onFocus={() => setShowRepTypeDropdown(true)}
                 placeholder="Type or search"
-                className={inputClass}
+                className="h-6 w-full rounded-sm border border-input bg-background px-2 text-sm"
                 autoComplete="off"
               />
               <button
                 type="button"
                 onClick={() => setShowRepTypeSearch(true)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-input bg-muted/50 hover:bg-muted"
-                aria-label="Search sales rep type"
+                className="inline-flex h-6 w-7 items-center justify-center rounded-sm border border-input bg-muted/50 hover:bg-muted"
+                aria-label="Manage sales rep type"
               >
                 <Search className="h-4 w-4" style={{ color: "var(--navbar)" }} />
               </button>
-              {showRepTypeDropdown && filteredRepTypes.length > 0 && (
-                <div className="absolute left-0 right-9 top-full z-50 mt-1 max-h-40 overflow-auto rounded border border-border bg-background shadow-lg">
-                  {filteredRepTypes.map((type) => (
+              {showRepTypeDropdown && filteredRepTypeOptions.length > 0 && (
+                <div className="absolute left-0 right-8 top-full z-50 mt-1 max-h-48 overflow-auto rounded border border-border bg-background shadow-lg">
+                  {filteredRepTypeOptions.slice(0, 30).map((item) => (
                     <button
-                      key={type.id}
+                      key={item}
                       type="button"
                       className="w-full px-2.5 py-2 text-left text-sm hover:bg-muted/80"
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() => {
-                        setSelectedRepType(type.name);
+                        setSelectedRepType(item);
                         setShowRepTypeDropdown(false);
+                        (repTypeRef.current?.querySelector("input") as HTMLInputElement)?.blur();
                       }}
                     >
-                      <span className="text-muted-foreground">{type.code || "—"}</span>
-                      {" — "}
-                      <span className="font-medium">{type.name}</span>
+                      <span className="font-medium">{item}</span>
                     </button>
                   ))}
                 </div>
@@ -286,15 +279,13 @@ export function SalesRepFormDialog({
         </div>
       </form>
 
-      <SalesRepTypeSearchDialog
+      <ProductStyleSearchBlobDialog
+        title="Sales Rep Type Search"
         open={showRepTypeSearch}
         onOpenChange={setShowRepTypeSearch}
-        repTypes={repTypes}
-        onRepTypesChange={setRepTypes}
-        onSelect={(name) => {
-          setSelectedRepType(name);
-          setShowRepTypeSearch(false);
-        }}
+        items={repTypeLookupItems}
+        onItemsChange={setRepTypeLookupItems}
+        onSelect={setSelectedRepType}
       />
     </Dialog>
   );
