@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { gateModulePageAction } from "@/lib/mutation-gate";
 import { clamp2, parseISODate } from "@/lib/financial-reports";
+import { getPaymentAccountAccessForUser } from "@/lib/payment-account-access";
 
 function n(v: unknown): number {
   const x = Number(v ?? 0);
@@ -70,7 +71,8 @@ function addBucket(m: Map<string, Bucket>, id: string, patch: Partial<Bucket>) {
 export async function getCashReport(fromInput: string, toInput: string): Promise<CashReportResult> {
   const gate = await gateModulePageAction("accounting", "cash-report", "view");
   if (!gate.ok) return { ok: false, error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
+  const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
 
   const from = parseISODate(fromInput);
   const to = parseISODate(toInput);
@@ -364,7 +366,11 @@ export async function getCashAccountTransactions(
 ): Promise<CashTransactionsResult> {
   const gate = await gateModulePageAction("accounting", "cash-report", "view");
   if (!gate.ok) return { ok: false, error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
+  const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
+  if (!payAccess.unrestricted && !payAccess.allowedIds.has(paymentAccountId)) {
+    return { ok: false, error: "This payment account is not assigned to you." };
+  }
 
   const from = parseISODate(fromInput);
   const to = parseISODate(toInput);

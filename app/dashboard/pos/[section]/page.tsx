@@ -13,6 +13,10 @@ import { SsrTargets } from "@/components/pos/ssr-targets";
 import { ParkedSalesList } from "@/components/pos/parked-sales-list";
 import { DailyPaymentsView } from "@/components/pos/daily-payments-view";
 import { ShopPerformanceReport } from "@/components/pos/shop-performance-report";
+import {
+  getPaymentAccountAccessForUser,
+  userHasShopSalesRepRole,
+} from "@/lib/payment-account-access";
 
 type PosSectionDef = {
   label: string;
@@ -151,6 +155,19 @@ export default async function POSSectionPage({
     );
     const defaultPriceType = retailPriceType?.name ?? priceTypes[0]?.name ?? "Retail Price";
 
+    const payAccess = await getPaymentAccountAccessForUser(supabase, user.id, orgId);
+    const shopSalesRep = await userHasShopSalesRepRole(supabase, user.id, orgId);
+    const allPaymentAccounts = Array.isArray(paymentAccountsRes?.data)
+      ? (paymentAccountsRes.data as Array<{ id: string; code: string; name: string; account_type: string }>)
+      : [];
+    const paymentAccountsForUser = payAccess.unrestricted
+      ? allPaymentAccounts
+      : allPaymentAccounts.filter((a) => payAccess.allowedIds.has(a.id));
+    const posPaymentBlockedReason =
+      !shopSalesRep && !payAccess.unrestricted && paymentAccountsForUser.length === 0
+        ? "No payment accounts are assigned to you. Ask an administrator to assign accounts in user settings."
+        : null;
+
     return (
       <div className="min-h-[400px] space-y-4">
         <NewPOSSale
@@ -171,8 +188,10 @@ export default async function POSSectionPage({
           orgName={orgName}
           orgPhone={orgPhone}
           cashierName={cashierName}
-          paymentAccounts={Array.isArray(paymentAccountsRes?.data) ? paymentAccountsRes.data : []}
+          paymentAccounts={paymentAccountsForUser}
           paymentMethods={Array.isArray(paymentMethodsRes?.data) ? paymentMethodsRes.data : []}
+          canRecordPosPayments={!shopSalesRep}
+          posPaymentBlockedReason={posPaymentBlockedReason}
         />
       </div>
     );

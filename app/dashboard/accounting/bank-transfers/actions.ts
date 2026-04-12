@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { gateModulePageAction } from "@/lib/mutation-gate";
+import {
+  getPaymentAccountAccessForUser,
+  assertPaymentAccountIdAllowed,
+} from "@/lib/payment-account-access";
 
 function normalizeDate(input: string | null | undefined) {
   return String(input ?? "").slice(0, 10);
@@ -72,6 +76,14 @@ export async function saveBankTransfer(input: SaveBankTransferInput) {
   if (!to_account_id) return { error: "To account is required." };
   if (from_account_id === to_account_id) return { error: "From and To accounts must be different." };
   if (amount <= 0) return { error: "Amount must be greater than 0." };
+
+  const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
+  if (!payAccess.unrestricted) {
+    const fromChk = assertPaymentAccountIdAllowed(payAccess, from_account_id);
+    if (!fromChk.ok) return { error: fromChk.error };
+    const toChk = assertPaymentAccountIdAllowed(payAccess, to_account_id);
+    if (!toChk.ok) return { error: toChk.error };
+  }
 
   const payload = {
     transfer_date,

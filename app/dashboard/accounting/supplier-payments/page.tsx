@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { SupplierPayments } from "@/components/purchases/supplier-payments";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import { getPaymentAccountAccessForUser } from "@/lib/payment-account-access";
 
 export default async function SupplierPaymentsPage({
   searchParams,
@@ -63,13 +64,23 @@ export default async function SupplierPaymentsPage({
   const suppliers = suppliersRes.error ? [] : (suppliersRes.data ?? []);
   const paymentMethods = paymentMethodsRes.error ? [] : (paymentMethodsRes.data ?? []);
 
+  const payAccess = await getPaymentAccountAccessForUser(supabase, user.id, orgId);
+  const accountRows = (accountsRes.data ?? []) as Array<{
+    id: string;
+    code?: string | null;
+    name?: string | null;
+  }>;
+
   let paymentAccounts: string[] = [];
-  if (!accountsRes.error && accountsRes.data?.length) {
-    paymentAccounts = (accountsRes.data as Array<{ code?: string | null; name?: string | null }>)
+  if (!accountsRes.error && accountRows.length) {
+    const rowsForUser = payAccess.unrestricted
+      ? accountRows
+      : accountRows.filter((a) => payAccess.allowedIds.has(a.id));
+    paymentAccounts = rowsForUser
       .map((a) => String(a.name ?? a.code ?? "").trim())
       .filter(Boolean);
   }
-  if (paymentAccounts.length === 0) {
+  if (paymentAccounts.length === 0 && payAccess.unrestricted) {
     const accountSet = new Set<string>();
     for (const p of payments as Array<{ payment_account?: string | null }>) {
       const account = String(p.payment_account ?? "").trim();

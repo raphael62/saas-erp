@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { gateModulePageAction } from "@/lib/mutation-gate";
+import {
+  getPaymentAccountAccessForUser,
+  assertPaymentAccountLabelAllowed,
+} from "@/lib/payment-account-access";
 
 type SavePaymentInput = {
   id?: string;
@@ -146,7 +150,7 @@ export async function saveSupplierPayment(input: SavePaymentInput) {
   const id = String(input.id ?? "").trim();
   const gate = await gateModulePageAction("accounting", "supplier-payments", id ? "edit" : "create");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
   const supplier_id = String(input.supplier_id ?? "").trim();
   const payment_date = normalizeDate(input.payment_date);
   const bank_date = normalizeDate(input.bank_date || input.payment_date);
@@ -227,7 +231,7 @@ export async function saveSupplierPayment(input: SavePaymentInput) {
 export async function saveBatchSupplierPayment(input: BatchPaymentInput) {
   const gate = await gateModulePageAction("accounting", "supplier-payments", "create");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
 
   const supplier_id = String(input.supplier_id ?? "").trim();
   const payment_date = normalizeDate(input.payment_date);
@@ -249,6 +253,17 @@ export async function saveBatchSupplierPayment(input: BatchPaymentInput) {
   if (!payment_date) return { error: "Transaction Date is required." };
   if (!payment_account) return { error: "Pay From Account is required." };
   if (allocations.length === 0) return { error: "Select at least one invoice with a payment amount." };
+
+  const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
+  if (!payAccess.unrestricted) {
+    const acctOk = await assertPaymentAccountLabelAllowed(
+      supabase,
+      userId,
+      orgId,
+      payment_account
+    );
+    if (!acctOk.ok) return { error: acctOk.error };
+  }
 
   for (const alloc of allocations) {
     const payment_no = await generatePaymentNo(supabase, orgId, payment_date);

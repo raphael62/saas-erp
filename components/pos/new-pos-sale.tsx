@@ -471,6 +471,8 @@ export function NewPOSSale({
   paymentMethods = [],
   initialLocationId = "",
   initialSalesRepId = "",
+  canRecordPosPayments = true,
+  posPaymentBlockedReason = null,
 }: {
   customers: Customer[];
   salesReps: SalesRep[];
@@ -492,6 +494,10 @@ export function NewPOSSale({
   /** Pre-filled from user provisioning (primary location / linked rep). */
   initialLocationId?: string;
   initialSalesRepId?: string;
+  /** When false (e.g. shop sales rep), POS completes on account only — no payment collection. */
+  canRecordPosPayments?: boolean;
+  /** Shown when paid checkout is blocked (e.g. no payment accounts assigned). */
+  posPaymentBlockedReason?: string | null;
 }) {
   const router = useRouter();
   const cashier = cashierName ?? "Cashier";
@@ -994,6 +1000,152 @@ export function NewPOSSale({
   const dailyAchievementPct = dailyTarget > 0 ? (todaySales / dailyTarget) * 100 : 0;
   const targetReached = dailyTarget > 0 && todaySales >= dailyTarget;
 
+  async function completePosCheckout(opts: {
+    saleSettlement?: "paid_in_full" | "on_account";
+    amountPaid: number;
+    paymentMethod: string;
+    paymentAccountId: string | null;
+  }) {
+    const saleLines = lines.filter((l) => hasLineData(l));
+    const receiptLines: ReceiptLineItem[] = [];
+    for (const line of saleLines) {
+      const product = line.product_id ? productLookup.byId.get(line.product_id) : undefined;
+      if (isEmptiesProduct(product)) continue;
+      const ctnQty = n(line.ctn_qty);
+      const btlQty = n(line.btl_qty);
+      const price = n(line.price_tax_inc);
+      const lineAmount = n(line.value_tax_inc);
+      const itemName = line.item_name || "—";
+      const pack = Math.max(1, n(line.pack_unit));
+      if (ctnQty !== 0 && btlQty !== 0) {
+        receiptLines.push({ item: itemName, unit: "Btl", qty: btlQty, price, amount: lineAmount });
+      } else if (ctnQty !== 0) {
+        receiptLines.push({ item: itemName, unit: "Ctn", qty: ctnQty, price, amount: lineAmount });
+      } else if (btlQty !== 0) {
+        receiptLines.push({ item: itemName, unit: "Btl", qty: btlQty, price, amount: lineAmount });
+      } else {
+        receiptLines.push({ item: itemName, unit: "Ctn", qty: 0, price, amount: lineAmount });
+      }
+    }
+
+    const emptiesReceived: ReceiptEmptiesReceived[] = Object.entries(emptiesRcvd)
+      .filter(([, v]) => v && n(v) !== 0)
+      .map(([emptiesType, v]) => ({ emptiesType, qtyCtn: n(v) }));
+
+    const emptiesRcvdNum: Record<string, number> = {};
+    for (const [k, v] of Object.entries(emptiesRcvd)) {
+      const val = n(v);
+      if (val !== 0) emptiesRcvdNum[k] = val;
+    }
+
+    const result = await savePosSale({
+      saleDate,
+      customerId,
+      locationId,
+      salesRepId,
+      notes,
+      lines: saleLines.map((l) => ({
+        product_id: l.product_id,
+        item_code: l.item_code,
+        item_name: l.item_name,
+        price_type: l.price_type,
+        pack_unit: l.pack_unit,
+        btl_qty: l.btl_qty,
+        ctn_qty: l.ctn_qty,
+        price_tax_inc: l.price_tax_inc,
+        tax_rate: l.tax_rate,
+        value_tax_inc: l.value_tax_inc,
+        isPromo: l.isPromo,
+      })),
+      subTotal: totals.sub_total,
+      vatTotal: totals.vat,
+      grandTotal: totals.grand_total,
+      emptiesDeposit: emptiesDepositValue,
+      emptiesRcvd: emptiesRcvdNum,
+      paymentMethod: opts.paymentMethod,
+      amountPaid: opts.amountPaid,
+      paymentAccountId: opts.paymentAccountId,
+      saleSettlement: opts.saleSettlement,
+    });
+
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+
+    router.refresh();
+
+    if (salesRepId?.trim() && saleDate) {
+      const monthKey = saleDate.slice(0, 7);
+      getPosPerformance(monthKey, salesRepId.trim(), saleDate).then((res) => {
+        const rep = res.reps[0];
+        if (!rep) return;
+        const todaySales = rep.salesByDay[saleDate] ?? 0;
+        const todayCommission =
+          rep.dailyTarget > 0 && todaySales >= rep.dailyTarget
+            ? todaySales * (rep.commissionPct / 100)
+            : 0;
+        setDailyPerf({
+          todaySales,
+          todayInvoiceCount: rep.todayInvoiceCount ?? 0,
+          dailyTarget: rep.dailyTarget,
+          commissionPct: rep.commissionPct,
+          todayCommission,
+          mtdCommission: rep.commissionEarned,
+          qualifyingDays: rep.qualifyingDays,
+          atRisk: rep.commissionAtRisk,
+          achievementPct: rep.achievementPct,
+        });
+      });
+    }
+
+    const invNo = result?.invoice_no ?? "";
+    const dateObj = saleDate ? new Date(saleDate + "T12:00:00") : new Date();
+    const dateStr =
+      dateObj.getDate().toString().padStart(2, "0") +
+      "-" +
+      ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][dateObj.getMonth()] +
+      "-" +
+      dateObj.getFullYear().toString().slice(-2);
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+    const loc = locations.find((l) => l.id === locationId);
+    const locationName = loc?.name ?? "—";
+    const locationPhone = loc?.phone ?? undefined;
+    const salesRepName = salesReps.find((r) => r.id === salesRepId)?.name ?? "—";
+
+    const grand = totals.grand_total + emptiesDepositValue;
+    const amountPaidOut = opts.saleSettlement === "on_account" ? 0 : opts.amountPaid;
+    const changeOut =
+      opts.saleSettlement === "on_account" ? 0 : amountPaidOut - grand;
+
+    setReceiptData({
+      companyName: orgName || "Company",
+      locationName,
+      locationPhone: locationPhone || undefined,
+      orgPhone: orgPhone || undefined,
+      invNo,
+      cashier: cashier,
+      salesRep: salesRepName,
+      date: dateStr,
+      time: timeStr,
+      lines: receiptLines,
+      netTotal: totals.sub_total,
+      vatRate: totals.sub_total > 0 ? (totals.vat / totals.sub_total) * 100 : 0,
+      vatAmount: totals.vat,
+      total: totals.grand_total,
+      emptiesDeposit: emptiesDepositValue,
+      grandTotal: grand,
+      amountPaid: amountPaidOut,
+      change: changeOut,
+      emptiesReceived,
+    });
+
+    setLines([blankLine("0", defaultPriceType)]);
+    setEmptiesRcvd({});
+    setReceiptOpen(true);
+  }
+
   return (
     <div className="flex flex-col gap-6 xl:flex-row">
       <div className="min-w-0 flex-1 space-y-4 xl:max-w-4xl">
@@ -1033,25 +1185,64 @@ export function NewPOSSale({
             >
               Park Sale
             </Button>
-            <Button
-              style={{ backgroundColor: "var(--navbar)", color: "white" }}
-              disabled={!hasItems}
-              className="min-h-[44px] touch-manipulation border-transparent hover:opacity-90"
-              onClick={() => {
-                if (!hasItems) return;
-                if (!salesRepId) {
-                  alert("Please select a Sales Rep.");
-                  return;
-                }
-                if (!customerId?.trim()) {
-                  alert("Please select a customer.");
-                  return;
-                }
-                setPaymentOpen(true);
-              }}
-            >
-              Take Payment
-            </Button>
+            {canRecordPosPayments ? (
+              <Button
+                style={{ backgroundColor: "var(--navbar)", color: "white" }}
+                disabled={!hasItems || Boolean(posPaymentBlockedReason)}
+                title={posPaymentBlockedReason ?? undefined}
+                className="min-h-[44px] touch-manipulation border-transparent hover:opacity-90"
+                onClick={() => {
+                  if (!hasItems) return;
+                  if (posPaymentBlockedReason) {
+                    alert(posPaymentBlockedReason);
+                    return;
+                  }
+                  if (!salesRepId) {
+                    alert("Please select a Sales Rep.");
+                    return;
+                  }
+                  if (!customerId?.trim()) {
+                    alert("Please select a customer.");
+                    return;
+                  }
+                  setPaymentOpen(true);
+                }}
+              >
+                Take Payment
+              </Button>
+            ) : (
+              <Button
+                style={{ backgroundColor: "var(--navbar)", color: "white" }}
+                disabled={!hasItems}
+                className="min-h-[44px] touch-manipulation border-transparent hover:opacity-90"
+                onClick={() => {
+                  if (!hasItems) return;
+                  if (!salesRepId) {
+                    alert("Please select a Sales Rep.");
+                    return;
+                  }
+                  if (!customerId?.trim()) {
+                    alert("Please select a customer.");
+                    return;
+                  }
+                  void (async () => {
+                    try {
+                      await completePosCheckout({
+                        saleSettlement: "on_account",
+                        amountPaid: 0,
+                        paymentMethod: "On account",
+                        paymentAccountId: null,
+                      });
+                    } catch (err) {
+                      const msg = err instanceof Error ? err.message : String(err);
+                      alert(msg || "Could not complete sale.");
+                    }
+                  })();
+                }}
+              >
+                Complete sale (on account)
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1691,140 +1882,12 @@ export function NewPOSSale({
           paymentMethods={paymentMethods}
           onComplete={async (amountPaid, paymentMethod, paymentAccountId) => {
             try {
-              const saleLines = lines.filter((l) => hasLineData(l));
-            const receiptLines: ReceiptLineItem[] = [];
-            for (const line of saleLines) {
-              const product = line.product_id ? productLookup.byId.get(line.product_id) : undefined;
-              if (isEmptiesProduct(product)) continue;
-              const ctnQty = n(line.ctn_qty);
-              const btlQty = n(line.btl_qty);
-              const price = n(line.price_tax_inc);
-              const lineAmount = n(line.value_tax_inc);
-              const itemName = line.item_name || "—";
-              const pack = Math.max(1, n(line.pack_unit));
-              if (ctnQty !== 0 && btlQty !== 0) {
-                receiptLines.push({ item: itemName, unit: "Btl", qty: btlQty, price, amount: lineAmount });
-              } else if (ctnQty !== 0) {
-                receiptLines.push({ item: itemName, unit: "Ctn", qty: ctnQty, price, amount: lineAmount });
-              } else if (btlQty !== 0) {
-                receiptLines.push({ item: itemName, unit: "Btl", qty: btlQty, price, amount: lineAmount });
-              } else {
-                receiptLines.push({ item: itemName, unit: "Ctn", qty: 0, price, amount: lineAmount });
-              }
-            }
-
-            const emptiesReceived: ReceiptEmptiesReceived[] = Object.entries(emptiesRcvd)
-              .filter(([, v]) => v && n(v) !== 0)
-              .map(([emptiesType, v]) => ({ emptiesType, qtyCtn: n(v) }));
-
-            const emptiesRcvdNum: Record<string, number> = {};
-            for (const [k, v] of Object.entries(emptiesRcvd)) {
-              const val = n(v);
-              if (val !== 0) emptiesRcvdNum[k] = val;
-            }
-
-            const result = await savePosSale({
-              saleDate,
-              customerId,
-              locationId,
-              salesRepId,
-              notes,
-              lines: saleLines.map((l) => ({
-                product_id: l.product_id,
-                item_code: l.item_code,
-                item_name: l.item_name,
-                price_type: l.price_type,
-                pack_unit: l.pack_unit,
-                btl_qty: l.btl_qty,
-                ctn_qty: l.ctn_qty,
-                price_tax_inc: l.price_tax_inc,
-                tax_rate: l.tax_rate,
-                value_tax_inc: l.value_tax_inc,
-                isPromo: l.isPromo,
-              })),
-              subTotal: totals.sub_total,
-              vatTotal: totals.vat,
-              grandTotal: totals.grand_total,
-              emptiesDeposit: emptiesDepositValue,
-              emptiesRcvd: emptiesRcvdNum,
-              paymentMethod: paymentMethod ?? "cash",
-              amountPaid,
-              paymentAccountId: paymentAccountId ?? null,
-            });
-
-            if (result?.error) {
-              throw new Error(result.error);
-            }
-
-            router.refresh();
-
-            if (salesRepId?.trim() && saleDate) {
-              const monthKey = saleDate.slice(0, 7);
-              getPosPerformance(monthKey, salesRepId.trim(), saleDate).then((res) => {
-                const rep = res.reps[0];
-                if (!rep) return;
-                const todaySales = rep.salesByDay[saleDate] ?? 0;
-                const todayCommission =
-                  rep.dailyTarget > 0 && todaySales >= rep.dailyTarget
-                    ? todaySales * (rep.commissionPct / 100)
-                    : 0;
-                setDailyPerf({
-                  todaySales,
-                  todayInvoiceCount: rep.todayInvoiceCount ?? 0,
-                  dailyTarget: rep.dailyTarget,
-                  commissionPct: rep.commissionPct,
-                  todayCommission,
-                  mtdCommission: rep.commissionEarned,
-                  qualifyingDays: rep.qualifyingDays,
-                  atRisk: rep.commissionAtRisk,
-                  achievementPct: rep.achievementPct,
-                });
+              await completePosCheckout({
+                amountPaid,
+                paymentMethod: paymentMethod ?? "cash",
+                paymentAccountId: paymentAccountId ?? null,
               });
-            }
-
-            const invNo = result?.invoice_no ?? "";
-
-            const dateObj = saleDate ? new Date(saleDate + "T12:00:00") : new Date();
-            const dateStr =
-              dateObj.getDate().toString().padStart(2, "0") +
-              "-" +
-              ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][dateObj.getMonth()] +
-              "-" +
-              dateObj.getFullYear().toString().slice(-2);
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: true });
-
-            const loc = locations.find((l) => l.id === locationId);
-            const locationName = loc?.name ?? "—";
-            const locationPhone = loc?.phone ?? undefined;
-            const salesRepName = salesReps.find((r) => r.id === salesRepId)?.name ?? "—";
-
-            setReceiptData({
-              companyName: orgName || "Company",
-              locationName,
-              locationPhone: locationPhone || undefined,
-              orgPhone: orgPhone || undefined,
-              invNo,
-              cashier: cashier,
-              salesRep: salesRepName,
-              date: dateStr,
-              time: timeStr,
-              lines: receiptLines,
-              netTotal: totals.sub_total,
-              vatRate: totals.sub_total > 0 ? (totals.vat / totals.sub_total) * 100 : 0,
-              vatAmount: totals.vat,
-              total: totals.grand_total,
-              emptiesDeposit: emptiesDepositValue,
-              grandTotal: totals.grand_total + emptiesDepositValue,
-              amountPaid,
-              change: amountPaid - (totals.grand_total + emptiesDepositValue),
-              emptiesReceived,
-            });
-
-            setPaymentOpen(false);
-            setLines([blankLine("0", defaultPriceType)]);
-            setEmptiesRcvd({});
-            setReceiptOpen(true);
+              setPaymentOpen(false);
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
               alert(msg || "Payment failed. Please try again.");

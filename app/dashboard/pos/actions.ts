@@ -5,6 +5,11 @@ import { revalidatePath } from "next/cache";
 import { gateModulePageAction } from "@/lib/mutation-gate";
 import { reassignInventoryDeltaFromDefaultLocation } from "@/lib/inventory-location-balances";
 import { getUserTransactionScope, scopeAllowsInvoiceRow } from "@/lib/user-transaction-scope";
+import {
+  getPaymentAccountAccessForUser,
+  userHasShopSalesRepRole,
+  assertPaymentAccountIdAllowed,
+} from "@/lib/payment-account-access";
 
 function n(v: string | number | null | undefined): number {
   const raw = String(v ?? "").replace(/,/g, "").trim();
@@ -43,6 +48,8 @@ export type PosSaleInput = {
   amountPaid: number;
   paymentAccountId?: string | null;
   cashierId?: string;
+  /** Shop reps must use on_account; others default paid_in_full at POS. */
+  saleSettlement?: "paid_in_full" | "on_account";
 };
 
 function isEmptiesProduct(itemName: string): boolean {
@@ -127,6 +134,42 @@ export async function savePosSale(input: PosSaleInput) {
   const emptiesDeposit = n(input.emptiesDeposit);
   const grandTotalWithEmpties = grandTotal + emptiesDeposit;
 
+  const shopRep = await userHasShopSalesRepRole(supabase, userId, orgId);
+  const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
+  const wantsOnAccount = input.saleSettlement === "on_account";
+
+  if (shopRep) {
+    if (!wantsOnAccount) {
+      return {
+        error:
+          "Shop sales reps can only complete POS sales on account (payments are not available).",
+      };
+    }
+    if (input.paymentAccountId?.trim() || n(input.amountPaid) > 0) {
+      return { error: "Shop sales reps cannot take payments at POS." };
+    }
+  }
+
+  const onAccountSale = shopRep || wantsOnAccount;
+  let balanceOs = 0;
+  let paymentMethodOut = String(input.paymentMethod ?? "cash").trim() || "cash";
+  let paymentAccountIdOut: string | null = input.paymentAccountId?.trim() || null;
+
+  if (onAccountSale) {
+    balanceOs = grandTotalWithEmpties;
+    paymentMethodOut = "On account";
+    paymentAccountIdOut = null;
+  } else {
+    if (!payAccess.unrestricted && payAccess.allowedIds.size === 0) {
+      return {
+        error:
+          "No payment accounts are assigned to you. Ask an administrator to assign accounts in user settings.",
+      };
+    }
+    const acctCheck = assertPaymentAccountIdAllowed(payAccess, paymentAccountIdOut);
+    if (!acctCheck.ok) return { error: acctCheck.error };
+  }
+
   const { data: inv, error: invErr } = await supabase
     .from("sales_invoices")
     .insert({
@@ -138,14 +181,14 @@ export async function savePosSale(input: PosSaleInput) {
       invoice_date: saleDate,
       type_status: "pos",
       notes: input.notes?.trim() || null,
-      balance_os: 0,
+      balance_os: balanceOs,
       total_qty: 0,
       sub_total: subTotal,
       tax_total: vatTotal,
       grand_total: grandTotalWithEmpties,
       empties_value: emptiesDeposit,
-      payment_method: input.paymentMethod || "cash",
-      payment_account_id: input.paymentAccountId || null,
+      payment_method: paymentMethodOut,
+      payment_account_id: paymentAccountIdOut,
       cashier_id: input.cashierId?.trim() || userId,
       posted_at: new Date().toISOString(),
       posted_by: userId,
@@ -722,11 +765,12 @@ export async function getDailyPosPayments(
 ): Promise<{ payments?: DailyPaymentRow[]; error?: string }> {
   const gate = await gateModulePageAction("pos", "daily-payments", "view");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
+  const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
 
   const { data, error } = await supabase
     .from("sales_invoices")
-    .select("id, payment_method, grand_total")
+    .select("id, payment_method, grand_total, payment_account_id")
     .eq("organization_id", orgId)
     .eq("type_status", "pos")
     .eq("invoice_date", date);
@@ -735,6 +779,10 @@ export async function getDailyPosPayments(
 
   const byMethod = new Map<string, { count: number; total: number }>();
   for (const row of data ?? []) {
+    if (!payAccess.unrestricted) {
+      const pid = (row as { payment_account_id?: string | null }).payment_account_id;
+      if (!pid || !payAccess.allowedIds.has(pid)) continue;
+    }
     const method = (row as { payment_method?: string }).payment_method ?? "cash";
     const total = n((row as { grand_total?: number }).grand_total);
     const curr = byMethod.get(method) ?? { count: 0, total: 0 };
@@ -780,7 +828,8 @@ export async function getDailyPosPaymentsByAccount(
 }> {
   const gate = await gateModulePageAction("pos", "daily-payments", "view");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
+  const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
 
   const [accountsRes, invoicesRes] = await Promise.all([
     supabase
@@ -853,6 +902,7 @@ export async function getDailyPosPaymentsByAccount(
   >();
 
   for (const acc of accounts) {
+    if (!payAccess.unrestricted && !payAccess.allowedIds.has(acc.id)) continue;
     if (!accountMatchesSearch(acc.code, acc.name)) continue;
     const head = typeToHead[acc.account_type?.toLowerCase() ?? ""] ?? "Other";
     const type = typeLabel[acc.account_type?.toLowerCase() ?? ""] ?? acc.account_type;
@@ -866,14 +916,16 @@ export async function getDailyPosPaymentsByAccount(
     });
   }
 
-  byAccount.set(null, {
-    code: "—",
-    accountName: "Unallocated",
-    type: "—",
-    head: "Other",
-    balance: 0,
-    transactions: [],
-  });
+  if (payAccess.unrestricted) {
+    byAccount.set(null, {
+      code: "—",
+      accountName: "Unallocated",
+      type: "—",
+      head: "Other",
+      balance: 0,
+      transactions: [],
+    });
+  }
 
   let totalCollected = 0;
   let totalReceipts = 0;
@@ -882,11 +934,11 @@ export async function getDailyPosPaymentsByAccount(
     const locId = inv.location_id;
     if (locationId && String(locId ?? "") !== String(locationId)) continue;
 
-    const total = n(inv.grand_total);
-    totalCollected += total;
-    totalReceipts += 1;
-
     const accId = inv.payment_account_id ?? null;
+    if (!payAccess.unrestricted) {
+      if (!accId || !payAccess.allowedIds.has(accId)) continue;
+    }
+
     let entry = byAccount.get(accId);
     if (!entry && accId) {
       const acc = accounts.find((a) => a.id === accId);
@@ -902,7 +954,17 @@ export async function getDailyPosPaymentsByAccount(
         byAccount.set(accId, entry);
       }
     }
-    if (!entry) entry = byAccount.get(null)!;
+    if (!entry) {
+      if (payAccess.unrestricted) {
+        entry = byAccount.get(null)!;
+      } else {
+        continue;
+      }
+    }
+
+    const total = n(inv.grand_total);
+    totalCollected += total;
+    totalReceipts += 1;
 
     const cust = Array.isArray(inv.customers) ? inv.customers[0] : inv.customers;
     const loc = Array.isArray(inv.locations) ? inv.locations[0] : inv.locations;

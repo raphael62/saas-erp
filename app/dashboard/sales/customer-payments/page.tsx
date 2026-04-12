@@ -4,6 +4,7 @@ import { CustomerPayments } from "@/components/sales/customer-payments";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 import { isTableUnavailableError, isSchemaCacheError } from "@/lib/supabase/table-missing";
+import { getPaymentAccountAccessForUser } from "@/lib/payment-account-access";
 
 export default async function CustomerPaymentsPage({
   searchParams,
@@ -43,7 +44,7 @@ export default async function CustomerPaymentsPage({
       .order("name"),
     supabase
       .from("payment_accounts")
-      .select("code,name")
+      .select("id,code,name")
       .eq("organization_id", orgId)
       .eq("is_active", true)
       .order("code"),
@@ -59,13 +60,23 @@ export default async function CustomerPaymentsPage({
   const customers = customersRes.error ? [] : customersRes.data ?? [];
   const paymentMethods = paymentMethodsRes.error ? [] : paymentMethodsRes.data ?? [];
 
+  const payAccess = await getPaymentAccountAccessForUser(supabase, user.id, orgId);
+  const accountRows = (accountsRes.data ?? []) as Array<{
+    id: string;
+    code?: string | null;
+    name?: string | null;
+  }>;
+
   let paymentAccounts: string[] = [];
-  if (!accountsRes.error && accountsRes.data?.length) {
-    paymentAccounts = (accountsRes.data as Array<{ code?: string | null; name?: string | null }>).map(
-      (a) => String(a.name ?? a.code ?? "").trim()
-    ).filter(Boolean);
+  if (!accountsRes.error && accountRows.length) {
+    const rowsForUser = payAccess.unrestricted
+      ? accountRows
+      : accountRows.filter((a) => payAccess.allowedIds.has(a.id));
+    paymentAccounts = rowsForUser
+      .map((a) => String(a.name ?? a.code ?? "").trim())
+      .filter(Boolean);
   }
-  if (paymentAccounts.length === 0) {
+  if (paymentAccounts.length === 0 && payAccess.unrestricted) {
     const accountSet = new Set<string>();
     for (const p of payments as Array<{ payment_account?: string | null }>) {
       const account = String(p.payment_account ?? "").trim();

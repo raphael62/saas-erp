@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isTableUnavailableError, isSchemaCacheError } from "@/lib/supabase/table-missing";
 import { gateCustomerPaymentsAction } from "@/lib/mutation-gate";
+import {
+  getPaymentAccountAccessForUser,
+  assertPaymentAccountLabelAllowed,
+} from "@/lib/payment-account-access";
 
 const SCHEMA_CACHE_MSG =
   "PostgREST schema cache is out of sync. Click 'Reload schema' then try again.";
@@ -114,7 +118,7 @@ export async function saveCustomerPayment(input: SavePaymentInput) {
   const id = String(input.id ?? "").trim();
   const gate = await gateCustomerPaymentsAction(id ? "edit" : "create");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
   const customer_id = String(input.customer_id ?? "").trim();
   const payment_date = normalizeDate(input.payment_date);
   const bank_date = normalizeDate(input.bank_date || input.payment_date);
@@ -127,6 +131,20 @@ export async function saveCustomerPayment(input: SavePaymentInput) {
   if (!customer_id) return { error: "Customer is required." };
   if (!payment_date) return { error: "Transaction Date is required." };
   if (amount <= 0) return { error: "Amount must be greater than 0." };
+
+  const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
+  if (!payAccess.unrestricted) {
+    if (!payment_account) {
+      return { error: "Select a payment account assigned to you." };
+    }
+    const acctOk = await assertPaymentAccountLabelAllowed(
+      supabase,
+      userId,
+      orgId,
+      payment_account
+    );
+    if (!acctOk.ok) return { error: acctOk.error };
+  }
 
   if (id) {
     const { error: updateErr } = await supabase
@@ -170,7 +188,8 @@ export async function saveCustomerPayment(input: SavePaymentInput) {
 export async function saveBatchCustomerPayments(rowsInput: BatchPaymentRowInput[]) {
   const gate = await gateCustomerPaymentsAction("create");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
+  const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
 
   const rows = (rowsInput ?? [])
     .map((row) => ({
@@ -186,6 +205,21 @@ export async function saveBatchCustomerPayments(rowsInput: BatchPaymentRowInput[
     .filter((row) => row.customer_id && row.payment_date && row.amount > 0);
 
   if (rows.length === 0) return { error: "No valid payment rows to save." };
+
+  if (!payAccess.unrestricted) {
+    for (const row of rows) {
+      if (!row.payment_account) {
+        return { error: "Each row must use a payment account assigned to you." };
+      }
+      const acctOk = await assertPaymentAccountLabelAllowed(
+        supabase,
+        userId,
+        orgId,
+        row.payment_account
+      );
+      if (!acctOk.ok) return { error: acctOk.error };
+    }
+  }
 
   for (const row of rows) {
     const payment_no = await generatePaymentNo(supabase, orgId, row.payment_date);

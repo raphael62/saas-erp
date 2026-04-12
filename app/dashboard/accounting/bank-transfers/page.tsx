@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { BankTransfers } from "@/components/accounting/bank-transfers";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
+import { getPaymentAccountAccessForUser } from "@/lib/payment-account-access";
 
 export default async function BankTransfersPage({
   searchParams,
@@ -44,7 +45,11 @@ export default async function BankTransfersPage({
     transfersRes.error && transfersRes.error.message.toLowerCase().includes("does not exist")
   );
   const transfers = tableMissing ? [] : (transfersRes.data ?? []);
-  const accounts = accountsRes.error ? [] : (accountsRes.data ?? []);
+  const accountsRaw = accountsRes.error ? [] : (accountsRes.data ?? []);
+  const payAccess = await getPaymentAccountAccessForUser(supabase, user.id, orgId);
+  const accounts = payAccess.unrestricted
+    ? accountsRaw
+    : (accountsRaw as Array<{ id: string }>).filter((a) => payAccess.allowedIds.has(a.id));
 
   const normalizedTransfers = transfers.map((t: unknown) => {
     const row = t as {
