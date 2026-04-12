@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, Mail, Printer, RefreshCcw, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { TransactionEditOverlay } from "@/components/ui/transaction-edit-overlay";
 import {
   getCustomerStatement,
   getCustomerStatementTransactions,
@@ -66,6 +67,7 @@ export function CustomerStatement({ orgName }: { orgName?: string }) {
   const [txError, setTxError] = useState<string | null>(null);
   const [txPaymentsMissing, setTxPaymentsMissing] = useState(false);
   const [txCustomer, setTxCustomer] = useState<StatementRow | null>(null);
+  const [editOverlayPath, setEditOverlayPath] = useState<string | null>(null);
 
   async function loadStatement() {
     setLoading(true);
@@ -131,6 +133,27 @@ export function CustomerStatement({ orgName }: { orgName?: string }) {
     setTxPaymentsMissing(Boolean(res.payments_missing));
     setTxLoading(false);
   }
+
+  const reloadTxRows = useCallback(async () => {
+    if (!txCustomer) return;
+    setTxLoading(true);
+    setTxError(null);
+    const res = await getCustomerStatementTransactions(txCustomer.customer_id, fromDate, toDate);
+    if ("error" in res) {
+      setTxError(res.error ?? "Unknown error");
+      setTxLoading(false);
+      return;
+    }
+    setTxOpening(res.opening);
+    setTxRows(res.rows);
+    setTxPaymentsMissing(Boolean(res.payments_missing));
+    setTxLoading(false);
+  }, [txCustomer, fromDate, toDate]);
+
+  const closeEditOverlay = useCallback(() => {
+    setEditOverlayPath(null);
+    void reloadTxRows();
+  }, [reloadTxRows]);
 
   return (
     <div className="space-y-3">
@@ -274,7 +297,10 @@ export function CustomerStatement({ orgName }: { orgName?: string }) {
 
       <Dialog
         open={showTx}
-        onOpenChange={setShowTx}
+        onOpenChange={(open) => {
+          setShowTx(open);
+          if (!open) setEditOverlayPath(null);
+        }}
         title={`${txCustomer?.cust_code || ""} — ${txCustomer?.customer_name || "Customer"}`}
         subtitle={`${fromDate} - ${toDate} · Opening: GH₵ ${fmtMoney(txOpening)}`}
         showGearIcon={false}
@@ -283,7 +309,7 @@ export function CustomerStatement({ orgName }: { orgName?: string }) {
       >
         <div className="space-y-2">
           <p className="rounded bg-slate-100 px-3 py-1.5 text-sm text-slate-700">
-            Click an invoice or payment reference to open it for editing.
+            Click a reference to open it in a panel above this statement. Use Ctrl/Cmd-click to open in a new tab.
           </p>
           {txPaymentsMissing && (
             <p className="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-800">
@@ -356,7 +382,15 @@ export function CustomerStatement({ orgName }: { orgName?: string }) {
                       <button
                         type="button"
                         className="text-[var(--navbar)] hover:underline"
-                        onClick={() => window.open(row.edit_path, "_blank", "noopener,noreferrer")}
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                            window.open(row.edit_path, "_blank", "noopener,noreferrer");
+                            return;
+                          }
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditOverlayPath(row.edit_path);
+                        }}
                       >
                         {row.reference}
                       </button>
@@ -433,6 +467,8 @@ export function CustomerStatement({ orgName }: { orgName?: string }) {
           </div>
         </div>
       </Dialog>
+
+      <TransactionEditOverlay path={editOverlayPath} onClose={closeEditOverlay} />
     </div>
   );
 }

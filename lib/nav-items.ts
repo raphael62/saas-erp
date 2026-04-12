@@ -159,7 +159,8 @@ export const mainNavItems: MainNavItemSerialized[] = [
       { href: "/dashboard/accounting/bank-reconciliation", label: "Bank Reconciliation", iconKey: "Calculator", badge: "Future" },
       { href: "/dashboard/accounting/ar-aging", label: "AR Aging", iconKey: "Clock" },
       { href: "/dashboard/accounting/ap-aging", label: "AP Aging", iconKey: "Clock", badge: "Future" },
-      { href: "/dashboard/accounting/gl-reports", label: "GL Reports", iconKey: "BarChart3", badge: "Future" },
+      { href: "/dashboard/accounting/gl-reports", label: "Financial statements", iconKey: "BarChart3" },
+      { href: "/dashboard/accounting/cash-report", label: "Cash Report", iconKey: "Wallet" },
     ],
   },
   {

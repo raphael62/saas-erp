@@ -112,7 +112,8 @@ export const permissionTree: PermissionNode[] = [
       { pageKey: "bank-reconciliation", label: "Bank Reconciliation", href: "/dashboard/accounting/bank-reconciliation", iconKey: "Calculator" },
       { pageKey: "ar-aging", label: "AR Aging", href: "/dashboard/accounting/ar-aging", iconKey: "Clock" },
       { pageKey: "ap-aging", label: "AP Aging", href: "/dashboard/accounting/ap-aging", iconKey: "Clock" },
-      { pageKey: "gl-reports", label: "GL Reports", href: "/dashboard/accounting/gl-reports", iconKey: "BarChart3" },
+      { pageKey: "gl-reports", label: "Financial statements", href: "/dashboard/accounting/gl-reports", iconKey: "BarChart3" },
+      { pageKey: "cash-report", label: "Cash Report", href: "/dashboard/accounting/cash-report", iconKey: "Wallet" },
     ],
   },
   {

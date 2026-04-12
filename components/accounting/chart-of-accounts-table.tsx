@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -39,15 +39,6 @@ const ACCOUNT_TYPES = [
   "Cost of Goods Sold",
   "Expense",
 ] as const;
-
-const TYPE_BG: Record<string, string> = {
-  Asset: "bg-sky-100 dark:bg-sky-950/40",
-  Liability: "bg-rose-100 dark:bg-rose-950/40",
-  Equity: "bg-violet-100 dark:bg-violet-950/40",
-  Revenue: "bg-emerald-100 dark:bg-emerald-950/40",
-  "Cost of Goods Sold": "bg-amber-100 dark:bg-amber-950/40",
-  Expense: "bg-yellow-100 dark:bg-yellow-950/40",
-};
 
 function fmtMoney(value: number | null | undefined) {
   return Number(value ?? 0).toLocaleString(undefined, {
@@ -127,6 +118,7 @@ export function ChartOfAccountsTable({
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const expandInitDone = useRef(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -136,6 +128,17 @@ export function ChartOfAccountsTable({
 
   const tree = useMemo(() => buildTree(accounts), [accounts]);
   const filteredTree = useMemo(() => filterTree(tree, search), [tree, search]);
+
+  /** Show full hierarchy on first load (ECOUNT-style tree view). */
+  useEffect(() => {
+    if (expandInitDone.current || accounts.length === 0) return;
+    const parentIds = new Set<string>();
+    for (const a of accounts) {
+      if (accounts.some((c) => c.parent_id === a.id)) parentIds.add(a.id);
+    }
+    setExpandedIds(parentIds);
+    expandInitDone.current = true;
+  }, [accounts]);
 
   useEffect(() => {
     if (search.trim()) {
@@ -278,61 +281,66 @@ export function ChartOfAccountsTable({
     );
   }
 
+  const toolbar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        size="sm"
+        onClick={() => openNew()}
+        className="bg-[var(--navbar)] text-white hover:bg-[var(--navbar)]/90"
+      >
+        <Plus className="h-4 w-4" />
+        New (F2)
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => openEdit(selectedId!)} disabled={!selectedId}>
+        <Pencil className="h-4 w-4" />
+        Change
+      </Button>
+      <Button size="sm" variant="outline" disabled={selectedIds.size === 0}>
+        <Trash2 className="h-4 w-4" />
+        Deactive/Reactivate
+      </Button>
+      <Button size="sm" variant="outline" disabled>
+        <FileSpreadsheet className="h-4 w-4" />
+        Excel
+      </Button>
+      <Button size="sm" variant="outline" onClick={expandAll}>
+        Expand All
+      </Button>
+      <Button size="sm" variant="outline" onClick={collapseAll}>
+        Collapse All
+      </Button>
+      <div className="ml-auto flex items-center gap-2">
+        <input
+          id="coa-search"
+          type="text"
+          placeholder="Search..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-8 w-48 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          className="bg-violet-600 text-white hover:bg-violet-700"
+          onClick={() => document.getElementById("coa-search")?.focus()}
+        >
+          <Search className="h-4 w-4" />
+          Search (F3)
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="max-w-[1320px] space-y-4">
       <p className="text-sm text-muted-foreground">
         Ghana GRA-compliant account structure — Assets (1xxx), Liabilities (2xxx), Equity (3xxx),
-        Revenue (4xxx), COGS (5xxx), Expenses (6xxx)
+        Revenue (4xxx), COGS (5xxx), Expenses (6xxx). Parent rows are group headings; post to leaf
+        accounts.
       </p>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          onClick={() => openNew()}
-          className="bg-[var(--navbar)] text-white hover:bg-[var(--navbar)]/90"
-        >
-          <Plus className="h-4 w-4" />
-          New (F2)
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => openEdit(selectedId!)} disabled={!selectedId}>
-          <Pencil className="h-4 w-4" />
-          Change
-        </Button>
-        <Button size="sm" variant="outline" disabled={selectedIds.size === 0}>
-          <Trash2 className="h-4 w-4" />
-          Deactive/Reactivate
-        </Button>
-        <Button size="sm" variant="outline" disabled>
-          <FileSpreadsheet className="h-4 w-4" />
-          Excel
-        </Button>
-        <Button size="sm" variant="outline" onClick={expandAll}>
-          Expand All
-        </Button>
-        <Button size="sm" variant="outline" onClick={collapseAll}>
-          Collapse All
-        </Button>
-        <div className="ml-auto flex items-center gap-2">
-          <input
-            id="coa-search"
-            type="text"
-            placeholder="Search..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-8 w-48 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            className="bg-violet-600 text-white hover:bg-violet-700"
-            onClick={() => document.getElementById("coa-search")?.focus()}
-          >
-            <Search className="h-4 w-4" />
-            Search (F3)
-          </Button>
-        </div>
-      </div>
+      {/* Toolbar (top) */}
+      {toolbar}
 
       {error && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
@@ -380,9 +388,11 @@ export function ChartOfAccountsTable({
                   <tr
                     key={acc.id}
                     onClick={() => setSelectedId(acc.id)}
-                    className={`border-b border-border last:border-0 hover:bg-muted/30 cursor-pointer ${
-                      TYPE_BG[acc.account_type] ?? ""
-                    } ${isSelected ? "bg-violet-200 dark:bg-violet-900/50" : ""}`}
+                    className={`border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer ${
+                      isSelected
+                        ? "bg-violet-200/90 dark:bg-violet-950/60"
+                        : "bg-background even:bg-muted/15"
+                    }`}
                   >
                     <td className="px-3 py-2">
                       <input
@@ -396,10 +406,10 @@ export function ChartOfAccountsTable({
                         className="rounded"
                       />
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 min-w-[240px] max-w-[min(100%,520px)]">
                       <div
-                        className="flex items-center gap-1"
-                        style={{ paddingLeft: depth * 20 }}
+                        className="flex items-center gap-1 min-w-0"
+                        style={{ paddingLeft: depth * 18 }}
                       >
                         {hasChildren ? (
                           <button
@@ -408,7 +418,7 @@ export function ChartOfAccountsTable({
                               e.stopPropagation();
                               toggleExpand(acc.id);
                             }}
-                            className="rounded p-0.5 hover:bg-black/10"
+                            className="shrink-0 rounded p-0.5 hover:bg-black/10 dark:hover:bg-white/10"
                             aria-label={isExpanded ? "Collapse" : "Expand"}
                           >
                             {isExpanded ? (
@@ -418,9 +428,16 @@ export function ChartOfAccountsTable({
                             )}
                           </button>
                         ) : (
-                          <span className="w-5" />
+                          <span className="inline-block w-5 shrink-0" aria-hidden />
                         )}
-                        <span className="font-medium">
+                        <span
+                          className={
+                            hasChildren
+                              ? "font-semibold text-foreground truncate"
+                              : "font-normal text-foreground truncate"
+                          }
+                          title={`[${acc.account_code}] ${acc.account_name}`}
+                        >
                           [{acc.account_code}] {acc.account_name}
                         </span>
                       </div>
@@ -441,14 +458,16 @@ export function ChartOfAccountsTable({
                         "—"
                       )}
                     </td>
-                    <td className="px-3 py-2">{acc.dr_cr ?? "Dr"}</td>
-                    <td className="px-3 py-2">{acc.account_type}</td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {hasChildren ? "Not applicable" : "—"}
-                    </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2 whitespace-nowrap">{acc.dr_cr ?? "Dr"}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">{acc.account_type}</td>
+                    <td className="px-3 py-2 text-muted-foreground">Not applicable</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
                       {isLeaf ? (
-                        <span className="text-green-600 dark:text-green-400">Yes</span>
+                        acc.is_active ? (
+                          <span className="text-green-700 dark:text-green-400">Yes</span>
+                        ) : (
+                          <span className="text-muted-foreground">No</span>
+                        )
                       ) : (
                         "—"
                       )}
@@ -509,6 +528,9 @@ export function ChartOfAccountsTable({
           </div>
         )}
       </div>
+
+      {/* Toolbar (bottom — matches ECOUNT-style action strip) */}
+      {toolbar}
 
       {/* New/Edit Form Dialog */}
       <Dialog

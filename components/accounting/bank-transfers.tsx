@@ -48,18 +48,22 @@ type BankTransfersProps = {
   transfers: BankTransfer[];
   accounts: PaymentAccount[];
   tableMissing?: boolean;
+  editId?: string;
 };
 
 export function BankTransfers({
   transfers = [],
   accounts = [],
   tableMissing = false,
+  editId,
 }: BankTransfersProps) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const propEdit = typeof editId === "string" && editId.trim() !== "" ? editId.trim() : undefined;
+  const openEditId = propEdit && transfers.some((t) => t.id === propEdit) ? propEdit : null;
+  const [editingId, setEditingId] = useState<string | null>(openEditId);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -75,6 +79,14 @@ export function BankTransfers({
 
   const selected = filtered.find((x) => x.id === selectedId) ?? null;
   const editing = transfers.find((x) => x.id === editingId) ?? null;
+
+  useEffect(() => {
+    if (!openEditId) return;
+    setEditingId(openEditId);
+    setSelectedId(openEditId);
+    setShowForm(true);
+    window.history.replaceState(null, "", "/dashboard/accounting/bank-transfers");
+  }, [openEditId]);
 
   async function handleDelete() {
     if (!selected) return;

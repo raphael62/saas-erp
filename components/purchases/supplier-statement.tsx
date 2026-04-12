@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   FileSpreadsheet,
   FileText,
@@ -15,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
+import { TransactionEditOverlay } from "@/components/ui/transaction-edit-overlay";
 import {
   getSupplierStatement,
   getSupplierStatementTransactions,
@@ -86,7 +86,6 @@ function supplierTxDescriptionClass(row: SupplierTxRow): string {
 }
 
 export function SupplierStatement({ orgName }: { orgName?: string }) {
-  const router = useRouter();
   const [fromDate, setFromDate] = useState(firstDayOfMonthIso());
   const [toDate, setToDate] = useState(todayIso());
   const [rows, setRows] = useState<StatementRow[]>([]);
@@ -108,6 +107,7 @@ export function SupplierStatement({ orgName }: { orgName?: string }) {
   const [txEmptiesMissing, setTxEmptiesMissing] = useState(false);
   const [txSupplier, setTxSupplier] = useState<StatementRow | null>(null);
   const [txFilter, setTxFilter] = useState<SupplierStatementFilter>("all");
+  const [editOverlayPath, setEditOverlayPath] = useState<string | null>(null);
 
   const loadStatement = useCallback(async () => {
     setLoading(true);
@@ -430,7 +430,10 @@ export function SupplierStatement({ orgName }: { orgName?: string }) {
 
       <Dialog
         open={showTx}
-        onOpenChange={setShowTx}
+        onOpenChange={(open) => {
+          setShowTx(open);
+          if (!open) setEditOverlayPath(null);
+        }}
         title={txSupplier ? supplierTitle(txSupplier) : "Supplier"}
         subtitle={`${fromDate} ~ ${toDate} · Opening: GH₵ ${fmtMoney(txOpening)}`}
         showGearIcon={false}
@@ -440,7 +443,7 @@ export function SupplierStatement({ orgName }: { orgName?: string }) {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground">
-              Click a reference to open that document for editing (same tab).
+              Click a reference to open it in a panel above this statement. Use Ctrl/Cmd-click to open in a new tab.
             </p>
             <div className="inline-flex overflow-hidden rounded-md border border-border text-xs font-medium">
               {(
@@ -582,10 +585,15 @@ export function SupplierStatement({ orgName }: { orgName?: string }) {
                         type="button"
                         className="hover:underline"
                         style={{ color: NAVBAR }}
-                        onClick={() => {
-                          setShowTx(false);
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                            window.open(row.edit_path, "_blank", "noopener,noreferrer");
+                            return;
+                          }
+                          e.preventDefault();
+                          e.stopPropagation();
                           queueSupplierStatementEditNavigation(row.edit_path);
-                          router.push(row.edit_path);
+                          setEditOverlayPath(row.edit_path);
                         }}
                       >
                         {row.reference}
@@ -677,6 +685,14 @@ export function SupplierStatement({ orgName }: { orgName?: string }) {
           </div>
         </div>
       </Dialog>
+
+      <TransactionEditOverlay
+        path={editOverlayPath}
+        onClose={() => {
+          setEditOverlayPath(null);
+          if (txSupplier) void loadTransactions(txSupplier, txFilter);
+        }}
+      />
     </div>
   );
 }

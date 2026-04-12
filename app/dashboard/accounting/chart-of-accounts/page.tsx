@@ -42,7 +42,7 @@ export default async function ChartOfAccountsPage() {
       </nav>
 
       <div>
-        <h1 className="text-xl font-semibold">Chart of Accounts Management</h1>
+        <h1 className="text-xl font-semibold">Chart of Accounts</h1>
       </div>
 
       <ChartOfAccountsTable

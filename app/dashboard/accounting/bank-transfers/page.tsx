@@ -6,7 +6,14 @@ import { BankTransfers } from "@/components/accounting/bank-transfers";
 import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 
-export default async function BankTransfersPage() {
+export default async function BankTransfersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const params = await searchParams;
+  const editId = typeof params.edit === "string" ? params.edit : undefined;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -69,6 +76,7 @@ export default async function BankTransfersPage() {
         transfers={normalizedTransfers as Parameters<typeof BankTransfers>[0]["transfers"]}
         accounts={accounts as Parameters<typeof BankTransfers>[0]["accounts"]}
         tableMissing={tableMissing}
+        editId={editId}
       />
     </div>
   );

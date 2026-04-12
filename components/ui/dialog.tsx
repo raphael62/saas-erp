@@ -38,7 +38,11 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
-        className={cn("fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-lg bg-background shadow-xl", contentClassName)}
+        className={cn(
+          "fixed left-1/2 top-1/2 z-[51] w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-lg bg-background shadow-xl",
+          contentClassName
+        )}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div
           className="flex items-center justify-between px-4 py-3 text-white"
