@@ -10,6 +10,68 @@ function n(v: unknown): number {
   return Number.isFinite(x) ? x : 0;
 }
 
+/** First10 chars of an ISO / timestamptz string (YYYY-MM-DD). */
+function isoDateFromTs(ts: string | null | undefined): string {
+  const s = String(ts ?? "").trim();
+  return s ? s.slice(0, 10) : "";
+}
+
+type PosLineRefundRow = {
+  sales_invoice_id?: string;
+  qty?: number;
+  cl_qty?: number;
+  refunded_qty?: number;
+  refunded_cl_qty?: number;
+  value_tax_inc?: number;
+  updated_at?: string | null;
+};
+
+/** Tax-included line value that has been refunded (proportional to qty / cl_qty). */
+function lineRefundedMerchValue(ln: PosLineRefundRow): number {
+  const v = clamp2(n(ln.value_tax_inc));
+  const rq = n(ln.refunded_qty);
+  const rcq = n(ln.refunded_cl_qty);
+  if (rq <= 0 && rcq <= 0) return 0;
+  const q = n(ln.qty);
+  const cq = n(ln.cl_qty);
+  let frac = 1;
+  if (q > 0) frac *= Math.min(1, rq / q);
+  if (cq > 0) frac *= Math.min(1, rcq / cq);
+  if (q <= 0 && cq <= 0) frac = rq > 0 || rcq > 0 ? 1 : 0;
+  return clamp2(v * frac);
+}
+
+function posMerchRefundFromLines(
+  lines: PosLineRefundRow[]
+): { merchRefund: number; lastRefundLineTs: string | null } {
+  let merchRefund = 0;
+  let lastRefundLineTs: string | null = null;
+  for (const ln of lines) {
+    const part = lineRefundedMerchValue(ln);
+    if (part > 0) {
+      merchRefund = clamp2(merchRefund + part);
+      const u = String(ln.updated_at ?? "").trim();
+      if (u && (!lastRefundLineTs || u > lastRefundLineTs)) lastRefundLineTs = u;
+    }
+  }
+  return { merchRefund, lastRefundLineTs };
+}
+
+function posCashRefundOut(collected: number, merchRefund: number): number {
+  if (collected <= 0 || merchRefund <= 0) return 0;
+  return clamp2(Math.min(collected, merchRefund));
+}
+
+function posRefundBookDate(
+  invoiceDate: string,
+  refundedAt: string | null | undefined,
+  lastRefundLineTs: string | null
+): string {
+  if (refundedAt) return isoDateFromTs(refundedAt);
+  if (lastRefundLineTs) return isoDateFromTs(lastRefundLineTs);
+  return invoiceDate;
+}
+
 type PaymentAccountRow = { id: string; code: string; name: string };
 
 function matchAccountId(
@@ -185,6 +247,63 @@ export async function getCashReport(fromInput: string, toInput: string): Promise
     }
   }
 
+  const { data: posRows, error: posErr } = await supabase
+    .from("sales_invoices")
+    .select("id, payment_account_id, grand_total, balance_os, invoice_date, refunded_at")
+    .eq("organization_id", orgId)
+    .eq("type_status", "pos")
+    .not("payment_account_id", "is", null)
+    .lte("invoice_date", to);
+
+  if (posErr) return { ok: false, error: posErr.message };
+
+  const posList = (posRows ?? []) as Array<{
+    id: string;
+    payment_account_id?: string | null;
+    grand_total?: number;
+    balance_os?: number;
+    invoice_date?: string;
+    refunded_at?: string | null;
+  }>;
+  const posIds = posList.map((p) => p.id).filter(Boolean);
+  const linesByInvoice = new Map<string, PosLineRefundRow[]>();
+  if (posIds.length > 0) {
+    const { data: lineRows, error: lineErr } = await supabase
+      .from("sales_invoice_lines")
+      .select("sales_invoice_id, qty, cl_qty, refunded_qty, refunded_cl_qty, value_tax_inc, updated_at")
+      .eq("organization_id", orgId)
+      .in("sales_invoice_id", posIds);
+    if (lineErr) return { ok: false, error: lineErr.message };
+    for (const raw of lineRows ?? []) {
+      const ln = raw as PosLineRefundRow & { sales_invoice_id?: string };
+      const iid = String(ln.sales_invoice_id ?? "").trim();
+      if (!iid) continue;
+      const arr = linesByInvoice.get(iid) ?? [];
+      arr.push(ln);
+      linesByInvoice.set(iid, arr);
+    }
+  }
+
+  for (const r of posList) {
+    const aid = String(r.payment_account_id ?? "").trim();
+    if (!aid || !buckets.has(aid)) continue;
+    const saleD = String(r.invoice_date ?? "").slice(0, 10);
+    if (!saleD) continue;
+    const collected = clamp2(n(r.grand_total) - n(r.balance_os));
+    if (collected <= 0) continue;
+    const { merchRefund, lastRefundLineTs } = posMerchRefundFromLines(linesByInvoice.get(r.id) ?? []);
+    const refundCash = posCashRefundOut(collected, merchRefund);
+    const refundD = refundCash > 0 ? posRefundBookDate(saleD, r.refunded_at, lastRefundLineTs) : "";
+
+    if (saleD < from) addBucket(buckets, aid, { beginning: collected });
+    else if (saleD >= from && saleD <= to) addBucket(buckets, aid, { increase: collected });
+
+    if (refundCash > 0 && refundD) {
+      if (refundD < from) addBucket(buckets, aid, { beginning: -refundCash });
+      else if (refundD >= from && refundD <= to) addBucket(buckets, aid, { decrease: refundCash });
+    }
+  }
+
   type GroupAcc = {
     paymentAccountId: string;
     code: string;
@@ -262,7 +381,7 @@ export async function getCashReport(fromInput: string, toInput: string): Promise
 }
 
 export type CashTxRow = {
-  kind: "customer" | "supplier" | "transfer";
+  kind: "customer" | "supplier" | "transfer" | "pos" | "pos_refund";
   id: string;
   date: string;
   bankDate: string;
@@ -347,6 +466,54 @@ async function beginningBalanceBefore(
     const toId = String(r.to_account_id ?? "");
     if (toId === paymentAccountId) beginning = clamp2(beginning + amt);
     if (fromId === paymentAccountId) beginning = clamp2(beginning - amt);
+  }
+
+  const { data: posBegInv, error: posBegErr } = await supabase
+    .from("sales_invoices")
+    .select("id, invoice_date, grand_total, balance_os, refunded_at")
+    .eq("organization_id", orgId)
+    .eq("type_status", "pos")
+    .eq("payment_account_id", paymentAccountId)
+    .lt("invoice_date", fromDate);
+
+  if (posBegErr) throw new Error(posBegErr.message);
+
+  const posBegList = (posBegInv ?? []) as Array<{
+    id: string;
+    invoice_date?: string;
+    grand_total?: number;
+    balance_os?: number;
+    refunded_at?: string | null;
+  }>;
+  const begIds = posBegList.map((p) => p.id).filter(Boolean);
+  const begLinesByInv = new Map<string, PosLineRefundRow[]>();
+  if (begIds.length > 0) {
+    const { data: begLines, error: begLineErr } = await supabase
+      .from("sales_invoice_lines")
+      .select("sales_invoice_id, qty, cl_qty, refunded_qty, refunded_cl_qty, value_tax_inc, updated_at")
+      .eq("organization_id", orgId)
+      .in("sales_invoice_id", begIds);
+    if (begLineErr) throw new Error(begLineErr.message);
+    for (const raw of begLines ?? []) {
+      const ln = raw as PosLineRefundRow & { sales_invoice_id?: string };
+      const iid = String(ln.sales_invoice_id ?? "").trim();
+      if (!iid) continue;
+      const arr = begLinesByInv.get(iid) ?? [];
+      arr.push(ln);
+      begLinesByInv.set(iid, arr);
+    }
+  }
+
+  for (const r of posBegList) {
+    const saleD = String(r.invoice_date ?? "").slice(0, 10);
+    if (!saleD) continue;
+    const collected = clamp2(n(r.grand_total) - n(r.balance_os));
+    if (collected <= 0) continue;
+    beginning = clamp2(beginning + collected);
+    const { merchRefund, lastRefundLineTs } = posMerchRefundFromLines(begLinesByInv.get(r.id) ?? []);
+    const refundCash = posCashRefundOut(collected, merchRefund);
+    const refundD = refundCash > 0 ? posRefundBookDate(saleD, r.refunded_at, lastRefundLineTs) : "";
+    if (refundCash > 0 && refundD && refundD < fromDate) beginning = clamp2(beginning - refundCash);
   }
 
   return beginning;
@@ -483,6 +650,113 @@ export async function getCashAccountTransactions(
       decrease: 0,
       editHref: `/dashboard/sales/customer-payments?edit=${encodeURIComponent(r.id)}`,
     });
+  }
+
+  const { data: posTxRows, error: posTxErr } = await supabase
+    .from("sales_invoices")
+    .select(
+      "id, invoice_no, invoice_date, grand_total, balance_os, customer_id, notes, payment_method, refunded_at"
+    )
+    .eq("organization_id", orgId)
+    .eq("type_status", "pos")
+    .eq("payment_account_id", paRow.id)
+    .lte("invoice_date", to)
+    .order("invoice_date", { ascending: true })
+    .order("invoice_no", { ascending: true });
+
+  if (posTxErr) return { ok: false, error: posTxErr.message };
+
+  const posTxList = (posTxRows ?? []) as Array<{
+    id: string;
+    invoice_no?: string;
+    invoice_date?: string;
+    grand_total?: number;
+    balance_os?: number;
+    customer_id?: string | null;
+    notes?: string | null;
+    payment_method?: string | null;
+    refunded_at?: string | null;
+  }>;
+  const posTxIds = posTxList.map((p) => p.id).filter(Boolean);
+  const txLinesByInvoice = new Map<string, PosLineRefundRow[]>();
+  if (posTxIds.length > 0) {
+    const { data: txLines, error: txLineErr } = await supabase
+      .from("sales_invoice_lines")
+      .select("sales_invoice_id, qty, cl_qty, refunded_qty, refunded_cl_qty, value_tax_inc, updated_at")
+      .eq("organization_id", orgId)
+      .in("sales_invoice_id", posTxIds);
+    if (txLineErr) return { ok: false, error: txLineErr.message };
+    for (const raw of txLines ?? []) {
+      const ln = raw as PosLineRefundRow & { sales_invoice_id?: string };
+      const iid = String(ln.sales_invoice_id ?? "").trim();
+      if (!iid) continue;
+      const arr = txLinesByInvoice.get(iid) ?? [];
+      arr.push(ln);
+      txLinesByInvoice.set(iid, arr);
+    }
+  }
+
+  const posExtraCustIds = [
+    ...new Set(
+      posTxList
+        .map((row) => String(row.customer_id ?? "").trim())
+        .filter((id) => id && !customerNameById.has(id))
+    ),
+  ];
+  if (posExtraCustIds.length > 0) {
+    const { data: posCustNames } = await supabase
+      .from("customers")
+      .select("id, name")
+      .eq("organization_id", orgId)
+      .in("id", posExtraCustIds);
+    for (const row of posCustNames ?? []) {
+      const x = row as { id: string; name?: string | null };
+      customerNameById.set(x.id, String(x.name ?? "").trim());
+    }
+  }
+
+  for (const r of posTxList) {
+    const saleD = String(r.invoice_date ?? "").slice(0, 10);
+    if (!saleD) continue;
+    const collected = clamp2(n(r.grand_total) - n(r.balance_os));
+    const { merchRefund, lastRefundLineTs } = posMerchRefundFromLines(txLinesByInvoice.get(r.id) ?? []);
+    const refundCash = posCashRefundOut(collected, merchRefund);
+    const refundD = refundCash > 0 ? posRefundBookDate(saleD, r.refunded_at, lastRefundLineTs) : "";
+    const custName = r.customer_id ? customerNameById.get(r.customer_id) ?? "" : "";
+
+    if (collected > 0 && saleD >= from && saleD <= to) {
+      rows.push({
+        kind: "pos",
+        id: r.id,
+        date: saleD,
+        bankDate: "",
+        docNo: String(r.invoice_no ?? ""),
+        txnTypeLabel: "In - POS collection",
+        counterpartyCode: "",
+        counterpartyName: custName,
+        details: detailParts(r.payment_method, r.notes),
+        increase: collected,
+        decrease: 0,
+        editHref: `/dashboard/pos/receipts/${encodeURIComponent(r.id)}`,
+      });
+    }
+
+    if (refundCash > 0 && refundD && refundD >= from && refundD <= to) {
+      rows.push({
+        kind: "pos_refund",
+        id: `${r.id}-refund`,
+        date: refundD,
+        bankDate: "",
+        docNo: String(r.invoice_no ?? ""),
+        txnTypeLabel: "Out - POS refund",
+        counterpartyCode: "",
+        counterpartyName: custName,
+        details: detailParts(`Receipt ${String(r.invoice_no ?? "")}`, r.notes),
+        increase: 0,
+        decrease: refundCash,
+        editHref: `/dashboard/pos/receipts/${encodeURIComponent(r.id)}`,
+      });
+    }
   }
 
   const { data: supRows, error: sErr } = await supabase

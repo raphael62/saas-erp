@@ -13,9 +13,18 @@ import {
 } from "@/components/pos/receipt-print-modal";
 import { savePosSale } from "@/app/dashboard/pos/actions";
 import { getPosPerformance } from "@/app/dashboard/pos/actions-performance";
+import {
+  listPosParkedCarts,
+  savePosParkedCart,
+  deletePosParkedCart,
+  getPosParkedCartPayload,
+} from "@/app/dashboard/pos/parked-actions";
 import { dailyTargetFromMonthly } from "@/lib/month-working-days";
 
 const POS_PARKED_PREFIX = "pos-parked-";
+
+const UUID_RESUME =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type ParkedItem = {
   id: string;
@@ -473,6 +482,7 @@ export function NewPOSSale({
   initialSalesRepId = "",
   canRecordPosPayments = true,
   posPaymentBlockedReason = null,
+  orgId = "",
 }: {
   customers: Customer[];
   salesReps: SalesRep[];
@@ -498,6 +508,8 @@ export function NewPOSSale({
   canRecordPosPayments?: boolean;
   /** Shown when paid checkout is blocked (e.g. no payment accounts assigned). */
   posPaymentBlockedReason?: string | null;
+  /** When set, parked sales sync to the server for shared cashier visibility. */
+  orgId?: string;
 }) {
   const router = useRouter();
   const cashier = cashierName ?? "Cashier";
@@ -513,7 +525,7 @@ export function NewPOSSale({
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptPrintData | null>(null);
 
-  const loadParkedFromStorage = useCallback((): ParkedItem[] => {
+  const loadLegacyParkedFromStorage = useCallback((): ParkedItem[] => {
     if (typeof window === "undefined") return [];
     const items: ParkedItem[] = [];
     for (let i = 0; i < window.localStorage.length; i++) {
@@ -549,9 +561,55 @@ export function NewPOSSale({
   }, [customers, locations]);
 
   const [parkedFromStorage, setParkedFromStorage] = useState<ParkedItem[]>([]);
-  const refreshParked = useCallback(() => setParkedFromStorage(loadParkedFromStorage()), [loadParkedFromStorage]);
+  const refreshParked = useCallback(async () => {
+    if (orgId?.trim()) {
+      const res = await listPosParkedCarts();
+      if (res.error) {
+        setParkedFromStorage(loadLegacyParkedFromStorage());
+        return;
+      }
+      const mapped: ParkedItem[] = (res.carts ?? []).map((row) => {
+        const p = row.payload as {
+          saleDate?: string;
+          customerId?: string;
+          locationId?: string;
+          salesRepId?: string;
+          notes?: string;
+          lines?: Line[];
+          emptiesRcvd?: Record<string, string>;
+          grandTotal?: number;
+          parkedAt?: string;
+        };
+        const customerName = p.customerId
+          ? customers.find((c) => c.id === p.customerId)?.name ?? "—"
+          : "—";
+        const locationName = locations.find((l) => l.id === p.locationId)?.name ?? "—";
+        const total = Number.isFinite(p.grandTotal) ? (p.grandTotal ?? 0) : 0;
+        const shortId = row.id.replace(/-/g, "").slice(-6);
+        const receiptNo = `PARK-${(p.saleDate ?? "").replace(/-/g, "")}-${shortId}`;
+        const ts = row.updated_at ? new Date(row.updated_at).getTime() : NaN;
+        const parkedAt = Number.isFinite(ts)
+          ? new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: true })
+          : "—";
+        return {
+          id: row.id,
+          receipt_no: receiptNo,
+          customer_name: customerName,
+          location_name: locationName,
+          total,
+          parkedAt,
+          payload: p,
+        };
+      });
+      mapped.sort((a, b) => b.id.localeCompare(a.id));
+      setParkedFromStorage(mapped);
+      return;
+    }
+    setParkedFromStorage(loadLegacyParkedFromStorage());
+  }, [orgId, customers, locations, loadLegacyParkedFromStorage]);
+
   useEffect(() => {
-    refreshParked();
+    void refreshParked();
   }, [refreshParked]);
 
   type DailyPerf = {
@@ -618,12 +676,17 @@ export function NewPOSSale({
   const searchParams = useSearchParams();
   const resumeKey = searchParams.get("resume");
   useEffect(() => {
-    if (!resumeKey || !resumeKey.startsWith(POS_PARKED_PREFIX)) return;
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(resumeKey);
-      if (!raw) return;
-      const payload = JSON.parse(raw) as { saleDate?: string; customerId?: string; locationId?: string; salesRepId?: string; notes?: string; lines?: Line[]; emptiesRcvd?: Record<string, string> };
+    if (!resumeKey) return;
+
+    const applyPayload = (payload: {
+      saleDate?: string;
+      customerId?: string;
+      locationId?: string;
+      salesRepId?: string;
+      notes?: string;
+      lines?: Line[];
+      emptiesRcvd?: Record<string, string>;
+    }) => {
       if (payload.saleDate) setSaleDate(payload.saleDate);
       if (payload.customerId) setCustomerId(payload.customerId);
       if (payload.locationId) setLocationId(payload.locationId);
@@ -635,11 +698,36 @@ export function NewPOSSale({
         setLines(withBlank.map((l, i) => ({ ...l, key: String(i) })));
       }
       if (payload.emptiesRcvd) setEmptiesRcvd(payload.emptiesRcvd);
-      window.localStorage.removeItem(resumeKey);
-      refreshParked();
-      window.history.replaceState({}, "", "/dashboard/pos/new-sale");
-    } catch {
-      // ignore
+    };
+
+    if (resumeKey.startsWith(POS_PARKED_PREFIX)) {
+      if (typeof window === "undefined") return;
+      try {
+        const raw = window.localStorage.getItem(resumeKey);
+        if (!raw) return;
+        const payload = JSON.parse(raw) as Parameters<typeof applyPayload>[0];
+        applyPayload(payload);
+        window.localStorage.removeItem(resumeKey);
+        void refreshParked();
+        window.history.replaceState({}, "", "/dashboard/pos/new-sale");
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    if (UUID_RESUME.test(resumeKey)) {
+      void (async () => {
+        const res = await getPosParkedCartPayload(resumeKey);
+        if (res.error || !res.payload) return;
+        applyPayload(res.payload as Parameters<typeof applyPayload>[0]);
+        const del = await deletePosParkedCart(resumeKey);
+        if (del.error) {
+          console.warn(del.error);
+        }
+        await refreshParked();
+        window.history.replaceState({}, "", "/dashboard/pos/new-sale");
+      })();
     }
   }, [resumeKey, defaultPriceType, refreshParked]);
 
@@ -1161,6 +1249,14 @@ export function NewPOSSale({
               className={`min-h-[44px] touch-manipulation ${hasItems ? "border-[var(--navbar)] text-[var(--navbar)]" : "opacity-70"}`}
               onClick={() => {
                 if (!hasItems) return;
+                if (!salesRepId) {
+                  alert("Please select a Sales Rep.");
+                  return;
+                }
+                if (!locationId?.trim()) {
+                  alert("Please select a location to park this sale.");
+                  return;
+                }
                 const payload = {
                   saleDate,
                   customerId,
@@ -1172,15 +1268,30 @@ export function NewPOSSale({
                   grandTotal: totals.grand_total + emptiesDepositValue,
                   parkedAt: new Date().toISOString(),
                 };
-                const key = `${POS_PARKED_PREFIX}${Date.now()}`;
-                try {
-                  localStorage.setItem(key, JSON.stringify(payload));
-                  refreshParked();
+                void (async () => {
+                  if (orgId?.trim()) {
+                    const r = await savePosParkedCart({
+                      locationId: locationId.trim(),
+                      salesRepId: salesRepId.trim(),
+                      payload: payload as Record<string, unknown>,
+                    });
+                    if (r.error) {
+                      alert(r.error);
+                      return;
+                    }
+                  } else {
+                    const key = `${POS_PARKED_PREFIX}${Date.now()}`;
+                    try {
+                      localStorage.setItem(key, JSON.stringify(payload));
+                    } catch {
+                      alert("Could not park sale.");
+                      return;
+                    }
+                  }
+                  await refreshParked();
                   setLines([blankLine("0", defaultPriceType)]);
                   setEmptiesRcvd({});
-                } catch {
-                  alert("Could not park sale.");
-                }
+                })();
               }}
             >
               Park Sale
@@ -1834,12 +1945,19 @@ export function NewPOSSale({
                           setLines(withBlank.map((l, i) => ({ ...l, key: String(i) })));
                         }
                         if (p.emptiesRcvd) setEmptiesRcvd(p.emptiesRcvd);
-                        try {
-                          localStorage.removeItem(ps.id);
-                          refreshParked();
-                        } catch {
-                          /* ignore */
-                        }
+                        void (async () => {
+                          if (UUID_RESUME.test(ps.id)) {
+                            const r = await deletePosParkedCart(ps.id);
+                            if (r.error) console.warn(r.error);
+                          } else {
+                            try {
+                              localStorage.removeItem(ps.id);
+                            } catch {
+                              /* ignore */
+                            }
+                          }
+                          await refreshParked();
+                        })();
                       }}
                     >
                       Resume
@@ -1850,12 +1968,19 @@ export function NewPOSSale({
                       className="touch-manipulation text-destructive"
                       onClick={() => {
                         if (!confirm("Delete this parked sale?")) return;
-                        try {
-                          localStorage.removeItem(ps.id);
-                          refreshParked();
-                        } catch {
-                          /* ignore */
-                        }
+                        void (async () => {
+                          if (UUID_RESUME.test(ps.id)) {
+                            const r = await deletePosParkedCart(ps.id);
+                            if (r.error) alert(r.error);
+                          } else {
+                            try {
+                              localStorage.removeItem(ps.id);
+                            } catch {
+                              /* ignore */
+                            }
+                          }
+                          await refreshParked();
+                        })();
                       }}
                     >
                       Delete

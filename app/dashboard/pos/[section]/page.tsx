@@ -188,6 +188,7 @@ export default async function POSSectionPage({
           orgName={orgName}
           orgPhone={orgPhone}
           cashierName={cashierName}
+          orgId={orgId}
           paymentAccounts={paymentAccountsForUser}
           paymentMethods={Array.isArray(paymentMethodsRes?.data) ? paymentMethodsRes.data : []}
           canRecordPosPayments={!shopSalesRep}
@@ -266,7 +267,7 @@ export default async function POSSectionPage({
             Resume or delete parked bills.
           </p>
         </div>
-        <ParkedSalesList customers={customers} locations={locations} />
+        <ParkedSalesList orgId={orgId} customers={customers} locations={locations} />
       </div>
     );
   }

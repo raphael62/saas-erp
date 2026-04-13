@@ -574,9 +574,11 @@ export async function searchPosReceipts(
 ): Promise<{ receipts?: ReceiptRow[]; error?: string }> {
   const gate = await gateModulePageAction("pos", "receipts", "view");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
 
-  const { data, error } = await supabase
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+
+  let invQuery = supabase
     .from("sales_invoices")
     .select(
       "id, invoice_no, invoice_date, grand_total, refunded_at, customers(name), locations(name), sales_reps(name)"
@@ -584,7 +586,13 @@ export async function searchPosReceipts(
     .eq("organization_id", orgId)
     .eq("type_status", "pos")
     .gte("invoice_date", fromDate)
-    .lte("invoice_date", toDate)
+    .lte("invoice_date", toDate);
+
+  if (!scope.unrestricted && scope.restrictByRep && scope.linkedSalesRepId) {
+    invQuery = invQuery.eq("sales_rep_id", scope.linkedSalesRepId);
+  }
+
+  const { data, error } = await invQuery
     .order("invoice_date", { ascending: false })
     .order("invoice_no", { ascending: false })
     .limit(200);
@@ -633,11 +641,11 @@ export async function searchPosReceipts(
 export async function refundPosReceipt(invoiceId: string): Promise<{ error?: string }> {
   const gate = await gateModulePageAction("pos", "receipts", "edit");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
 
   const { data: inv } = await supabase
     .from("sales_invoices")
-    .select("id, organization_id, type_status, refunded_at")
+    .select("id, organization_id, type_status, refunded_at, location_id, sales_rep_id")
     .eq("id", invoiceId)
     .single();
 
@@ -647,6 +655,13 @@ export async function refundPosReceipt(invoiceId: string): Promise<{ error?: str
     return { error: "Not a POS receipt" };
   if ((inv as { refunded_at?: string | null }).refunded_at)
     return { error: "Receipt already refunded" };
+
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+  const locId = String((inv as { location_id?: string | null }).location_id ?? "").trim() || null;
+  const repId = String((inv as { sales_rep_id?: string | null }).sales_rep_id ?? "").trim() || null;
+  if (!scopeAllowsInvoiceRow(scope, locId, repId)) {
+    return { error: "You are not allowed to refund this receipt." };
+  }
 
   const { data: lines } = await supabase
     .from("sales_invoice_lines")
@@ -683,7 +698,7 @@ export async function refundPosReceiptLine(
 ): Promise<{ error?: string }> {
   const gate = await gateModulePageAction("pos", "receipts", "edit");
   if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+  const { supabase, orgId, userId } = gate;
 
   const { data: line } = await supabase
     .from("sales_invoice_lines")
@@ -701,6 +716,20 @@ export async function refundPosReceiptLine(
     refunded_qty?: number;
     refunded_cl_qty?: number;
   };
+
+  const { data: invScopeRow } = await supabase
+    .from("sales_invoices")
+    .select("location_id, sales_rep_id")
+    .eq("id", l.sales_invoice_id)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
+  const invLoc = String((invScopeRow as { location_id?: string | null } | null)?.location_id ?? "").trim() || null;
+  const invRep = String((invScopeRow as { sales_rep_id?: string | null } | null)?.sales_rep_id ?? "").trim() || null;
+  if (!scopeAllowsInvoiceRow(scope, invLoc, invRep)) {
+    return { error: "You are not allowed to refund this receipt line." };
+  }
+
   const qty = n(l.qty);
   const clQty = n(l.cl_qty);
   const alreadyRefundedQty = n(l.refunded_qty);
@@ -767,10 +796,11 @@ export async function getDailyPosPayments(
   if (!gate.ok) return { error: gate.error };
   const { supabase, orgId, userId } = gate;
   const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
 
   const { data, error } = await supabase
     .from("sales_invoices")
-    .select("id, payment_method, grand_total, payment_account_id")
+    .select("id, payment_method, grand_total, payment_account_id, sales_rep_id")
     .eq("organization_id", orgId)
     .eq("type_status", "pos")
     .eq("invoice_date", date);
@@ -779,6 +809,10 @@ export async function getDailyPosPayments(
 
   const byMethod = new Map<string, { count: number; total: number }>();
   for (const row of data ?? []) {
+    if (!scope.unrestricted && scope.restrictByRep && scope.linkedSalesRepId) {
+      const rid = String((row as { sales_rep_id?: string | null }).sales_rep_id ?? "").trim();
+      if (rid !== scope.linkedSalesRepId) continue;
+    }
     if (!payAccess.unrestricted) {
       const pid = (row as { payment_account_id?: string | null }).payment_account_id;
       if (!pid || !payAccess.allowedIds.has(pid)) continue;
@@ -830,6 +864,7 @@ export async function getDailyPosPaymentsByAccount(
   if (!gate.ok) return { error: gate.error };
   const { supabase, orgId, userId } = gate;
   const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
+  const scope = await getUserTransactionScope(supabase, userId, orgId);
 
   const [accountsRes, invoicesRes] = await Promise.all([
     supabase
@@ -841,7 +876,7 @@ export async function getDailyPosPaymentsByAccount(
     supabase
       .from("sales_invoices")
       .select(
-        "id, invoice_no, grand_total, payment_account_id, location_id, customers(name), locations(name)"
+        "id, invoice_no, grand_total, payment_account_id, location_id, sales_rep_id, customers(name), locations(name)"
       )
       .eq("organization_id", orgId)
       .eq("type_status", "pos")
@@ -865,6 +900,7 @@ export async function getDailyPosPaymentsByAccount(
     grand_total: number;
     payment_account_id: string | null;
     location_id: string | null;
+    sales_rep_id?: string | null;
     customers?: { name?: string } | { name?: string }[] | null;
     locations?: { name?: string } | { name?: string }[] | null;
   }>;
@@ -933,6 +969,11 @@ export async function getDailyPosPaymentsByAccount(
   for (const inv of invoices) {
     const locId = inv.location_id;
     if (locationId && String(locId ?? "") !== String(locationId)) continue;
+
+    if (!scope.unrestricted && scope.restrictByRep && scope.linkedSalesRepId) {
+      const rid = String(inv.sales_rep_id ?? "").trim();
+      if (rid !== scope.linkedSalesRepId) continue;
+    }
 
     const accId = inv.payment_account_id ?? null;
     if (!payAccess.unrestricted) {

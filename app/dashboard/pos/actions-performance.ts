@@ -5,6 +5,7 @@ import {
   countMonthDaysExcludingSundays,
   dailyTargetFromMonthly,
 } from "@/lib/month-working-days";
+import { getUserTransactionScope } from "@/lib/user-transaction-scope";
 
 function n(v: string | number | null | undefined): number {
   const raw = String(v ?? "").replace(/,/g, "").trim();
@@ -66,6 +67,22 @@ export async function getPosPerformance(
   const orgId = (profile as { organization_id?: string } | null)?.organization_id;
   if (!orgId) return { reps: [], summary: defaultSummary(), error: "No organization" };
 
+  const scope = await getUserTransactionScope(supabase, user.id, orgId);
+  let effectiveRepId = salesRepId?.trim() || "";
+  if (!scope.unrestricted && scope.restrictByRep) {
+    if (!scope.linkedSalesRepId) {
+      return {
+        reps: [],
+        summary: defaultSummary(),
+        error: "No sales rep is linked to your profile. Ask an administrator to set your linked sales rep.",
+      };
+    }
+    if (effectiveRepId && effectiveRepId !== scope.linkedSalesRepId) {
+      return { reps: [], summary: defaultSummary(), error: "You can only view performance for your linked sales rep." };
+    }
+    effectiveRepId = scope.linkedSalesRepId;
+  }
+
   const [y, m] = monthKey.split("-").map(Number);
   if (!y || !m) return { reps: [], summary: defaultSummary(), error: "Invalid month" };
   const monthStart = `${monthKey}-01`;
@@ -117,8 +134,8 @@ export async function getPosPerformance(
     return { ...t, sales_reps: rep ?? null };
   });
 
-  if (salesRepId?.trim()) {
-    targets = targets.filter((t) => t.sales_rep_id === salesRepId.trim());
+  if (effectiveRepId) {
+    targets = targets.filter((t) => t.sales_rep_id === effectiveRepId);
   }
 
   const { data: posSales } = await supabase

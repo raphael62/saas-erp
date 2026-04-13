@@ -7,6 +7,7 @@ export const ROLE_OPTIONS = [
   { value: "platform_admin", label: "Platform Admin" },
   { value: "super_admin", label: "Super Admin" },
   { value: "admin", label: "Admin" },
+  { value: "cashier", label: "Cashier" },
   { value: "member", label: "Member" },
   { value: "sales", label: "Sales" },
   { value: "purchasing", label: "Purchasing" },

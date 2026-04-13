@@ -8,10 +8,12 @@
  * - Scoped: at least one of (linked rep, default location, or junction locations).
  *   - Location: row location_id must be non-null and in allowed set (junction ∪ default).
  *   - Rep: when linked_sales_rep_id is set, row sales_rep_id must match (non-null).
+ * - Shop sales rep (RBAC / legacy role): always rep-scoped to linked_sales_rep_id (see DB067).
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hasFullAccess } from "@/lib/roles";
+import { userHasShopSalesRepRole } from "@/lib/pos-staff-roles";
 
 /** Use when no auth context (should not happen on protected routes). */
 export const TRANSACTION_SCOPE_UNRESTRICTED: UserTransactionScope = {
@@ -69,7 +71,8 @@ export function filterSalesRepsByScope<T extends { id: string }>(
   scope: UserTransactionScope,
   reps: T[]
 ): T[] {
-  if (scope.unrestricted || !scope.restrictByRep || !scope.linkedSalesRepId) return reps;
+  if (scope.unrestricted || !scope.restrictByRep) return reps;
+  if (!scope.linkedSalesRepId) return [];
   return reps.filter((r) => r.id === scope.linkedSalesRepId);
 }
 
@@ -134,8 +137,13 @@ export async function getUserTransactionScope(
   if (defaultLocationId) allowedSet.add(defaultLocationId);
   const allowedLocationIds = [...allowedSet];
 
-  const restrictByRep = Boolean(linkedSalesRepId);
+  let restrictByRep = Boolean(linkedSalesRepId);
   const restrictByLocation = allowedLocationIds.length > 0;
+
+  const isShopSalesRep = await userHasShopSalesRepRole(supabase, userId, orgId);
+  if (isShopSalesRep) {
+    restrictByRep = true;
+  }
 
   if (!restrictByRep && !restrictByLocation) {
     return emptyScope();
