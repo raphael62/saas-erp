@@ -1549,7 +1549,9 @@ export function NewPOSSale({
               <span className="font-medium text-foreground">
                 {locStock != null ? fmtNum(locStock, 2) : "—"}
               </span>
-              {!hasPerLoc && locStock != null ? (
+              {hasPerLoc ? (
+                <span className="text-xs"> (cartons)</span>
+              ) : locStock != null ? (
                 <span className="text-xs"> (from product stock; add per-location balances for accuracy)</span>
               ) : null}
             </p>
@@ -2044,11 +2046,6 @@ export function NewPOSSale({
                         <span className="font-semibold text-foreground">{remaining != null ? remaining.toFixed(2) : "—"}</span>
                         {" / "}
                         {n(budget).toFixed(2)} ctns
-                        {reserved > 0 ? (
-                          <span className="block text-xs">
-                            ({reserved.toFixed(2)} ctns in parked sales — released if those carts are deleted or completed)
-                          </span>
-                        ) : null}
                       </span>
                     )}
                   </li>
@@ -2060,7 +2057,7 @@ export function NewPOSSale({
 
         <div className="rounded-lg border border-border bg-card p-4">
           <h3 className="font-semibold">Parked Sales</h3>
-          <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+          <ul className="mt-2 max-h-[min(32rem,calc(100vh-12rem))] space-y-2 overflow-y-auto">
             {parkedFromStorage.length === 0 ? (
               <li className="text-sm text-muted-foreground">No parked sales</li>
             ) : (

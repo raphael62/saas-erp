@@ -23,9 +23,9 @@ async function applyPosParkedStockDeduct(
   orgId: string,
   locationId: string,
   productId: string,
-  bottleQty: number
+  cartonQty: number
 ): Promise<{ error?: string }> {
-  if (bottleQty <= 1e-9) return {};
+  if (cartonQty <= 1e-9) return {};
   const { data: bal } = await supabase
     .from("inventory_location_balances")
     .select("quantity")
@@ -34,9 +34,9 @@ async function applyPosParkedStockDeduct(
     .eq("location_id", locationId)
     .maybeSingle();
   const atLoc = n((bal as { quantity?: number } | null)?.quantity);
-  if (atLoc + 1e-9 < bottleQty) {
+  if (atLoc + 1e-9 < cartonQty) {
     return {
-      error: `Insufficient stock at this location for one or more lines (available ${atLoc.toFixed(2)} btl, need ${bottleQty.toFixed(2)} more).`,
+      error: `Insufficient stock at this location for one or more lines (available ${atLoc.toFixed(2)} ctns, need ${cartonQty.toFixed(2)} more).`,
     };
   }
   const { data: prod } = await supabase
@@ -46,15 +46,15 @@ async function applyPosParkedStockDeduct(
     .eq("organization_id", orgId)
     .maybeSingle();
   const curr = n((prod as { stock_quantity?: number } | null)?.stock_quantity);
-  if (curr + 1e-9 < bottleQty) {
+  if (curr + 1e-9 < cartonQty) {
     return { error: "Insufficient global stock to park this sale." };
   }
   await supabase
     .from("products")
-    .update({ stock_quantity: Math.max(0, curr - bottleQty) })
+    .update({ stock_quantity: Math.max(0, curr - cartonQty) })
     .eq("id", productId)
     .eq("organization_id", orgId);
-  const loc = await reassignInventoryDeltaFromDefaultLocation(supabase, orgId, productId, -bottleQty, locationId);
+  const loc = await reassignInventoryDeltaFromDefaultLocation(supabase, orgId, productId, -cartonQty, locationId);
   if (loc.error) return loc;
   return {};
 }
@@ -64,9 +64,9 @@ async function applyPosParkedStockRestore(
   orgId: string,
   locationId: string,
   productId: string,
-  bottleQty: number
+  cartonQty: number
 ): Promise<{ error?: string }> {
-  if (bottleQty <= 1e-9) return {};
+  if (cartonQty <= 1e-9) return {};
   const { data: prod } = await supabase
     .from("products")
     .select("stock_quantity")
@@ -76,10 +76,10 @@ async function applyPosParkedStockRestore(
   const curr = n((prod as { stock_quantity?: number } | null)?.stock_quantity);
   await supabase
     .from("products")
-    .update({ stock_quantity: curr + bottleQty })
+    .update({ stock_quantity: curr + cartonQty })
     .eq("id", productId)
     .eq("organization_id", orgId);
-  const loc = await reassignInventoryDeltaFromDefaultLocation(supabase, orgId, productId, bottleQty, locationId);
+  const loc = await reassignInventoryDeltaFromDefaultLocation(supabase, orgId, productId, cartonQty, locationId);
   if (loc.error) return loc;
   return {};
 }

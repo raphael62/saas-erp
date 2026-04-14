@@ -1,4 +1,8 @@
-/** Bottle-level stock deductions for POS (matches savePosSale / park reservation logic). */
+/**
+ * Carton-level stock deductions for POS (matches savePosSale / park reservation logic).
+ * Global `products.stock_quantity` and `inventory_location_balances.quantity` are kept in
+ * cartons (same as purchase invoices and location transfers), not bottle totals.
+ */
 
 export type PosLineStockLike = {
   product_id?: string;
@@ -24,7 +28,7 @@ export function isPosPromoStockLine(line: PosLineStockLike): boolean {
   return Boolean(String(line.item_name ?? "").startsWith("Free - ") || line.isPromo);
 }
 
-/** Sum bottle-equivalent qty per product for non-promo, non-empties lines. */
+/** Sum carton qty per product for non-promo, non-empties lines (matches purchase `ctn_qty`). */
 export function computePosStockDeductionsByProduct(lines: PosLineStockLike[]): Map<string, number> {
   const productDeductions = new Map<string, number>();
   for (const line of lines) {
@@ -34,7 +38,8 @@ export function computePosStockDeductionsByProduct(lines: PosLineStockLike[]): M
     const packUnit = Math.max(1, n(line.pack_unit));
     const btlQty = n(line.btl_qty);
     const ctnQty = n(line.ctn_qty);
-    const qty = btlQty !== 0 ? btlQty : ctnQty !== 0 ? ctnQty * packUnit : 0;
+    const qty =
+      btlQty !== 0 ? btlQty / packUnit : ctnQty !== 0 ? ctnQty : 0;
     if (qty <= 0) continue;
     productDeductions.set(productId, (productDeductions.get(productId) ?? 0) + qty);
   }
