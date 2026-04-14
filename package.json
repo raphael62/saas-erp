@@ -9,6 +9,7 @@
     "fix:orphans": "node scripts/fix-all-orphan-profiles.mjs",
     "preflight:schema": "node scripts/schema-preflight.mjs",
     "dev": "next dev",
+    "dev:fresh": "node scripts/dev-fresh.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

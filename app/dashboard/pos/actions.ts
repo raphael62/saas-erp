@@ -10,6 +10,16 @@ import {
   userHasShopSalesRepRole,
   assertPaymentAccountIdAllowed,
 } from "@/lib/payment-account-access";
+import {
+  addCalendarDays,
+  type PosLineRefundRow,
+  posCashRefundOut,
+  posCollectedAtSale,
+  posMerchRefundFromLines,
+  posRefundBookDate,
+} from "@/lib/pos-cash-movements";
+import { computePromoRewardCartonsByPromotionId } from "@/lib/pos-promo-cartons";
+import { computePosStockDeductionsByProduct } from "@/lib/pos-inventory-deductions";
 
 function n(v: string | number | null | undefined): number {
   const raw = String(v ?? "").replace(/,/g, "").trim();
@@ -50,6 +60,8 @@ export type PosSaleInput = {
   cashierId?: string;
   /** Shop reps must use on_account; others default paid_in_full at POS. */
   saleSettlement?: "paid_in_full" | "on_account";
+  /** When completing a sale that was loaded from this server parked cart, promo reservations are released first. */
+  completedFromParkedCartId?: string | null;
 };
 
 function isEmptiesProduct(itemName: string): boolean {
@@ -278,58 +290,59 @@ export async function savePosSale(input: PosSaleInput) {
     return { error: linesErr.message };
   }
 
-  // Inventory deduction: deduct from products.stock_quantity for non-empties, non-promo lines
-  const productDeductions = new Map<string, number>();
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (isPromoLine(line) || isEmptiesProduct(line.item_name)) continue;
-    const productId = String(line.product_id ?? "").trim();
-    if (!productId) continue;
-    const packUnit = Math.max(1, n(line.pack_unit));
-    const btlQty = n(line.btl_qty);
-    const ctnQty = n(line.ctn_qty);
-    const qty =
-      btlQty !== 0 ? btlQty : ctnQty !== 0 ? ctnQty * packUnit : 0;
-    if (qty <= 0) continue;
-    const curr = productDeductions.get(productId) ?? 0;
-    productDeductions.set(productId, curr + qty);
-  }
+  const parkedCompleteId = String(input.completedFromParkedCartId ?? "").trim();
 
-  for (const [productId, deductQty] of productDeductions) {
-    const { data: prod } = await supabase
-      .from("products")
-      .select("stock_quantity")
-      .eq("id", productId)
-      .eq("organization_id", orgId)
-      .single();
-    const curr = n((prod as { stock_quantity?: number } | null)?.stock_quantity);
-    await supabase
-      .from("products")
-      .update({
-        stock_quantity: Math.max(0, curr - deductQty),
-      })
-      .eq("id", productId)
-      .eq("organization_id", orgId);
+  // Inventory: skip when completing from a server parked cart (stock was deducted at park time).
+  if (!parkedCompleteId) {
+    const productDeductions = computePosStockDeductionsByProduct(lines);
+    for (const [productId, deductQty] of productDeductions) {
+      const { data: prod } = await supabase
+        .from("products")
+        .select("stock_quantity")
+        .eq("id", productId)
+        .eq("organization_id", orgId)
+        .single();
+      const curr = n((prod as { stock_quantity?: number } | null)?.stock_quantity);
+      await supabase
+        .from("products")
+        .update({
+          stock_quantity: Math.max(0, curr - deductQty),
+        })
+        .eq("id", productId)
+        .eq("organization_id", orgId);
 
-    if (locationId) {
-      const loc = await reassignInventoryDeltaFromDefaultLocation(
-        supabase,
-        orgId,
-        productId,
-        -deductQty,
-        locationId
-      );
-      if (loc.error) return { error: loc.error };
+      if (locationId) {
+        const loc = await reassignInventoryDeltaFromDefaultLocation(
+          supabase,
+          orgId,
+          productId,
+          -deductQty,
+          locationId
+        );
+        if (loc.error) return { error: loc.error };
+      }
     }
   }
 
-  // Promo consumption: update promotions.consumed_cartons
-  const { data: promotionsData } = await supabase
-    .from("promotions")
-    .select("id")
-    .eq("organization_id", orgId)
-    .eq("is_active", true);
-  const promotions = (promotionsData ?? []) as Array<{ id: string }>;
+  // Promo consumption: release parked reservations for this cart, then update promotions.consumed_cartons
+  if (parkedCompleteId) {
+    const { error: relErr } = await supabase
+      .from("pos_parked_promo_reservations")
+      .delete()
+      .eq("organization_id", orgId)
+      .eq("pos_parked_cart_id", parkedCompleteId);
+    if (relErr && !relErr.message.toLowerCase().includes("does not exist")) {
+      return { error: relErr.message };
+    }
+    const { error: invRelErr } = await supabase
+      .from("pos_parked_inventory_reservations")
+      .delete()
+      .eq("organization_id", orgId)
+      .eq("pos_parked_cart_id", parkedCompleteId);
+    if (invRelErr && !invRelErr.message.toLowerCase().includes("does not exist")) {
+      return { error: invRelErr.message };
+    }
+  }
 
   const { data: rulesData } = await supabase
     .from("promotion_rules")
@@ -342,29 +355,7 @@ export async function savePosSale(input: PosSaleInput) {
     reward_unit?: string | null;
   }>;
 
-  const promoCartonsByPromoId = new Map<string, number>();
-  for (const line of lines) {
-    if (!isPromoLine(line)) continue;
-    const productId = String(line.product_id ?? "").trim();
-    if (!productId) continue;
-    const packUnit = Math.max(1, n(line.pack_unit));
-    const btlQty = n(line.btl_qty);
-    const ctnQty = n(line.ctn_qty);
-    const cartons =
-      btlQty !== 0
-        ? btlQty / packUnit
-        : ctnQty !== 0
-          ? ctnQty
-          : 0;
-    if (cartons <= 0) continue;
-    for (const r of rules) {
-      if (String(r.reward_product_id) === productId) {
-        const promoId = String(r.promotion_id);
-        const curr = promoCartonsByPromoId.get(promoId) ?? 0;
-        promoCartonsByPromoId.set(promoId, curr + cartons);
-      }
-    }
-  }
+  const promoCartonsByPromoId = computePromoRewardCartonsByPromotionId(lines, rules);
 
   for (const [promoId, cartons] of promoCartonsByPromoId) {
     const { data: promo } = await supabase
@@ -798,31 +789,136 @@ export async function getDailyPosPayments(
   const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
   const scope = await getUserTransactionScope(supabase, userId, orgId);
 
-  const { data, error } = await supabase
-    .from("sales_invoices")
-    .select("id, payment_method, grand_total, payment_account_id, sales_rep_id")
-    .eq("organization_id", orgId)
-    .eq("type_status", "pos")
-    .eq("invoice_date", date);
+  const dayStart = `${date}T00:00:00`;
+  const dayEnd = `${addCalendarDays(date, 1)}T00:00:00`;
 
-  if (error) return { error: error.message };
+  const [salesRes, hdrRefundRes, lineRefundRes] = await Promise.all([
+    supabase
+      .from("sales_invoices")
+      .select(
+        "id, payment_method, grand_total, balance_os, payment_account_id, sales_rep_id, invoice_date, refunded_at"
+      )
+      .eq("organization_id", orgId)
+      .eq("type_status", "pos")
+      .eq("invoice_date", date),
+    supabase
+      .from("sales_invoices")
+      .select(
+        "id, payment_method, grand_total, balance_os, payment_account_id, sales_rep_id, invoice_date, refunded_at"
+      )
+      .eq("organization_id", orgId)
+      .eq("type_status", "pos")
+      .not("payment_account_id", "is", null)
+      .not("refunded_at", "is", null)
+      .gte("refunded_at", dayStart)
+      .lt("refunded_at", dayEnd),
+    supabase
+      .from("sales_invoice_lines")
+      .select("sales_invoice_id")
+      .eq("organization_id", orgId)
+      .or("refunded_qty.gt.0,refunded_cl_qty.gt.0")
+      .gte("updated_at", dayStart)
+      .lt("updated_at", dayEnd),
+  ]);
 
-  const byMethod = new Map<string, { count: number; total: number }>();
-  for (const row of data ?? []) {
+  if (salesRes.error) return { error: salesRes.error.message };
+  if (hdrRefundRes.error) return { error: hdrRefundRes.error.message };
+  if (lineRefundRes.error) return { error: lineRefundRes.error.message };
+
+  type InvRow = {
+    id: string;
+    payment_method?: string | null;
+    grand_total?: number;
+    balance_os?: number;
+    payment_account_id?: string | null;
+    sales_rep_id?: string | null;
+    invoice_date?: string;
+    refunded_at?: string | null;
+  };
+
+  const invById = new Map<string, InvRow>();
+  for (const row of (salesRes.data ?? []) as InvRow[]) invById.set(row.id, row);
+  for (const row of (hdrRefundRes.data ?? []) as InvRow[]) invById.set(row.id, row);
+
+  const lineInvIds = [
+    ...new Set(
+      (lineRefundRes.data ?? [])
+        .map((x) => String((x as { sales_invoice_id?: string }).sales_invoice_id ?? "").trim())
+        .filter(Boolean)
+    ),
+  ];
+  const missingInv = lineInvIds.filter((id) => !invById.has(id));
+  if (missingInv.length > 0) {
+    const { data: extraInv, error: exErr } = await supabase
+      .from("sales_invoices")
+      .select(
+        "id, payment_method, grand_total, balance_os, payment_account_id, sales_rep_id, invoice_date, refunded_at"
+      )
+      .eq("organization_id", orgId)
+      .eq("type_status", "pos")
+      .in("id", missingInv);
+    if (exErr) return { error: exErr.message };
+    for (const row of (extraInv ?? []) as InvRow[]) invById.set(row.id, row);
+  }
+
+  const allIds = [...invById.keys()];
+  const linesByInvoice = new Map<string, PosLineRefundRow[]>();
+  if (allIds.length > 0) {
+    const { data: lineRows, error: lErr } = await supabase
+      .from("sales_invoice_lines")
+      .select("sales_invoice_id, qty, cl_qty, refunded_qty, refunded_cl_qty, value_tax_inc, updated_at")
+      .eq("organization_id", orgId)
+      .in("sales_invoice_id", allIds);
+    if (lErr) return { error: lErr.message };
+    for (const raw of lineRows ?? []) {
+      const ln = raw as PosLineRefundRow & { sales_invoice_id?: string };
+      const iid = String(ln.sales_invoice_id ?? "").trim();
+      if (!iid) continue;
+      const arr = linesByInvoice.get(iid) ?? [];
+      arr.push(ln);
+      linesByInvoice.set(iid, arr);
+    }
+  }
+
+  const passesScopeAndPay = (row: InvRow) => {
     if (!scope.unrestricted && scope.restrictByRep && scope.linkedSalesRepId) {
-      const rid = String((row as { sales_rep_id?: string | null }).sales_rep_id ?? "").trim();
-      if (rid !== scope.linkedSalesRepId) continue;
+      const rid = String(row.sales_rep_id ?? "").trim();
+      if (rid !== scope.linkedSalesRepId) return false;
     }
     if (!payAccess.unrestricted) {
-      const pid = (row as { payment_account_id?: string | null }).payment_account_id;
-      if (!pid || !payAccess.allowedIds.has(pid)) continue;
+      const pid = row.payment_account_id;
+      if (!pid || !payAccess.allowedIds.has(pid)) return false;
     }
-    const method = (row as { payment_method?: string }).payment_method ?? "cash";
-    const total = n((row as { grand_total?: number }).grand_total);
-    const curr = byMethod.get(method) ?? { count: 0, total: 0 };
-    curr.count += 1;
-    curr.total += total;
-    byMethod.set(method, curr);
+    return true;
+  };
+
+  const byMethod = new Map<string, { count: number; total: number }>();
+  const bump = (method: string, totalDelta: number, saleReceipt: boolean) => {
+    const m = method || "cash";
+    const cur = byMethod.get(m) ?? { count: 0, total: 0 };
+    cur.total += totalDelta;
+    if (saleReceipt) cur.count += 1;
+    byMethod.set(m, cur);
+  };
+
+  for (const row of (salesRes.data ?? []) as InvRow[]) {
+    if (!passesScopeAndPay(row)) continue;
+    const collected = posCollectedAtSale(row.grand_total, row.balance_os);
+    if (collected <= 0) continue;
+    bump(String(row.payment_method ?? "cash"), collected, true);
+  }
+
+  for (const inv of invById.values()) {
+    if (!passesScopeAndPay(inv)) continue;
+    const saleD = String(inv.invoice_date ?? "").slice(0, 10);
+    if (!saleD) continue;
+    const collected = posCollectedAtSale(inv.grand_total, inv.balance_os);
+    const { merchRefund, lastRefundLineTs } = posMerchRefundFromLines(linesByInvoice.get(inv.id) ?? []);
+    const refundCash = posCashRefundOut(collected, merchRefund);
+    const refundD = refundCash > 0 ? posRefundBookDate(saleD, inv.refunded_at, lastRefundLineTs) : "";
+    if (refundCash > 0 && refundD === date) {
+      bump(String(inv.payment_method ?? "cash"), -refundCash, false);
+    }
   }
 
   const payments: DailyPaymentRow[] = Array.from(byMethod.entries())
@@ -844,7 +940,9 @@ export type DailyPaymentAccountRow = {
   transactions: Array<{
     id: string;
     invoice_no: string;
-    grand_total: number;
+    /** Sale: cash collected; refund: negative cash out */
+    amount: number;
+    txn_kind: "sale" | "refund";
     location_name: string;
     customer_name: string;
   }>;
@@ -866,7 +964,13 @@ export async function getDailyPosPaymentsByAccount(
   const payAccess = await getPaymentAccountAccessForUser(supabase, userId, orgId);
   const scope = await getUserTransactionScope(supabase, userId, orgId);
 
-  const [accountsRes, invoicesRes] = await Promise.all([
+  const dayStart = `${date}T00:00:00`;
+  const dayEnd = `${addCalendarDays(date, 1)}T00:00:00`;
+
+  const selectInv =
+    "id, invoice_no, grand_total, balance_os, payment_account_id, location_id, sales_rep_id, invoice_date, refunded_at, customers(name), locations(name)";
+
+  const [accountsRes, salesRes, hdrRefundRes, lineRefundRes] = await Promise.all([
     supabase
       .from("payment_accounts")
       .select("id, code, name, account_type")
@@ -875,17 +979,33 @@ export async function getDailyPosPaymentsByAccount(
       .order("code"),
     supabase
       .from("sales_invoices")
-      .select(
-        "id, invoice_no, grand_total, payment_account_id, location_id, sales_rep_id, customers(name), locations(name)"
-      )
+      .select(selectInv)
       .eq("organization_id", orgId)
       .eq("type_status", "pos")
       .eq("invoice_date", date)
       .order("invoice_no"),
+    supabase
+      .from("sales_invoices")
+      .select(selectInv)
+      .eq("organization_id", orgId)
+      .eq("type_status", "pos")
+      .not("payment_account_id", "is", null)
+      .not("refunded_at", "is", null)
+      .gte("refunded_at", dayStart)
+      .lt("refunded_at", dayEnd),
+    supabase
+      .from("sales_invoice_lines")
+      .select("sales_invoice_id")
+      .eq("organization_id", orgId)
+      .or("refunded_qty.gt.0,refunded_cl_qty.gt.0")
+      .gte("updated_at", dayStart)
+      .lt("updated_at", dayEnd),
   ]);
 
   if (accountsRes.error) return { error: accountsRes.error.message };
-  if (invoicesRes.error) return { error: invoicesRes.error.message };
+  if (salesRes.error) return { error: salesRes.error.message };
+  if (hdrRefundRes.error) return { error: hdrRefundRes.error.message };
+  if (lineRefundRes.error) return { error: lineRefundRes.error.message };
 
   const accounts = (accountsRes.data ?? []) as Array<{
     id: string;
@@ -894,16 +1014,61 @@ export async function getDailyPosPaymentsByAccount(
     account_type: string;
   }>;
 
-  const invoices = (invoicesRes.data ?? []) as Array<{
+  type InvAcc = {
     id: string;
     invoice_no: string;
     grand_total: number;
+    balance_os?: number;
     payment_account_id: string | null;
     location_id: string | null;
     sales_rep_id?: string | null;
+    invoice_date?: string;
+    refunded_at?: string | null;
     customers?: { name?: string } | { name?: string }[] | null;
     locations?: { name?: string } | { name?: string }[] | null;
-  }>;
+  };
+
+  const invById = new Map<string, InvAcc>();
+  for (const row of (salesRes.data ?? []) as InvAcc[]) invById.set(row.id, row);
+  for (const row of (hdrRefundRes.data ?? []) as InvAcc[]) invById.set(row.id, row);
+
+  const lineInvIds = [
+    ...new Set(
+      (lineRefundRes.data ?? [])
+        .map((x) => String((x as { sales_invoice_id?: string }).sales_invoice_id ?? "").trim())
+        .filter(Boolean)
+    ),
+  ];
+  const missingInv = lineInvIds.filter((id) => !invById.has(id));
+  if (missingInv.length > 0) {
+    const { data: extraInv, error: exErr } = await supabase
+      .from("sales_invoices")
+      .select(selectInv)
+      .eq("organization_id", orgId)
+      .eq("type_status", "pos")
+      .in("id", missingInv);
+    if (exErr) return { error: exErr.message };
+    for (const row of (extraInv ?? []) as InvAcc[]) invById.set(row.id, row);
+  }
+
+  const allIds = [...invById.keys()];
+  const linesByInvoice = new Map<string, PosLineRefundRow[]>();
+  if (allIds.length > 0) {
+    const { data: lineRows, error: lErr } = await supabase
+      .from("sales_invoice_lines")
+      .select("sales_invoice_id, qty, cl_qty, refunded_qty, refunded_cl_qty, value_tax_inc, updated_at")
+      .eq("organization_id", orgId)
+      .in("sales_invoice_id", allIds);
+    if (lErr) return { error: lErr.message };
+    for (const raw of lineRows ?? []) {
+      const ln = raw as PosLineRefundRow & { sales_invoice_id?: string };
+      const iid = String(ln.sales_invoice_id ?? "").trim();
+      if (!iid) continue;
+      const arr = linesByInvoice.get(iid) ?? [];
+      arr.push(ln);
+      linesByInvoice.set(iid, arr);
+    }
+  }
 
   const searchQ = String(search ?? "").trim().toLowerCase();
   const accountMatchesSearch = (code: string, name: string) => {
@@ -966,20 +1131,7 @@ export async function getDailyPosPaymentsByAccount(
   let totalCollected = 0;
   let totalReceipts = 0;
 
-  for (const inv of invoices) {
-    const locId = inv.location_id;
-    if (locationId && String(locId ?? "") !== String(locationId)) continue;
-
-    if (!scope.unrestricted && scope.restrictByRep && scope.linkedSalesRepId) {
-      const rid = String(inv.sales_rep_id ?? "").trim();
-      if (rid !== scope.linkedSalesRepId) continue;
-    }
-
-    const accId = inv.payment_account_id ?? null;
-    if (!payAccess.unrestricted) {
-      if (!accId || !payAccess.allowedIds.has(accId)) continue;
-    }
-
+  const resolveEntry = (accId: string | null) => {
     let entry = byAccount.get(accId);
     if (!entry && accId) {
       const acc = accounts.find((a) => a.id === accId);
@@ -996,31 +1148,70 @@ export async function getDailyPosPaymentsByAccount(
       }
     }
     if (!entry) {
-      if (payAccess.unrestricted) {
-        entry = byAccount.get(null)!;
-      } else {
-        continue;
-      }
+      if (payAccess.unrestricted) entry = byAccount.get(null)!;
     }
+    return entry ?? null;
+  };
 
-    const total = n(inv.grand_total);
-    totalCollected += total;
-    totalReceipts += 1;
+  const passesScopeLocPay = (inv: InvAcc) => {
+    const locId = inv.location_id;
+    if (locationId && String(locId ?? "") !== String(locationId)) return false;
+    if (!scope.unrestricted && scope.restrictByRep && scope.linkedSalesRepId) {
+      const rid = String(inv.sales_rep_id ?? "").trim();
+      if (rid !== scope.linkedSalesRepId) return false;
+    }
+    const accId = inv.payment_account_id ?? null;
+    if (!payAccess.unrestricted) {
+      if (!accId || !payAccess.allowedIds.has(accId)) return false;
+    }
+    return true;
+  };
 
+  const pushTxn = (
+    inv: InvAcc,
+    accId: string | null,
+    amount: number,
+    txn_kind: "sale" | "refund"
+  ) => {
+    const entry = resolveEntry(accId);
+    if (!entry) return;
     const cust = Array.isArray(inv.customers) ? inv.customers[0] : inv.customers;
     const loc = Array.isArray(inv.locations) ? inv.locations[0] : inv.locations;
     entry.transactions.push({
-      id: inv.id,
+      id: txn_kind === "refund" ? `${inv.id}-refund` : inv.id,
       invoice_no: inv.invoice_no,
-      grand_total: total,
+      amount,
+      txn_kind,
       location_name: loc?.name ?? "—",
       customer_name: cust?.name ?? "Walk-in",
     });
+    totalCollected += amount;
+    if (txn_kind === "sale") totalReceipts += 1;
+  };
+
+  for (const inv of (salesRes.data ?? []) as InvAcc[]) {
+    if (!passesScopeLocPay(inv)) continue;
+    const collected = posCollectedAtSale(inv.grand_total, inv.balance_os);
+    if (collected <= 0) continue;
+    pushTxn(inv, inv.payment_account_id ?? null, collected, "sale");
+  }
+
+  for (const inv of invById.values()) {
+    if (!passesScopeLocPay(inv)) continue;
+    const saleD = String(inv.invoice_date ?? "").slice(0, 10);
+    if (!saleD) continue;
+    const collected = posCollectedAtSale(inv.grand_total, inv.balance_os);
+    const { merchRefund, lastRefundLineTs } = posMerchRefundFromLines(linesByInvoice.get(inv.id) ?? []);
+    const refundCash = posCashRefundOut(collected, merchRefund);
+    const refundD = refundCash > 0 ? posRefundBookDate(saleD, inv.refunded_at, lastRefundLineTs) : "";
+    if (refundCash > 0 && refundD === date) {
+      pushTxn(inv, inv.payment_account_id ?? null, -refundCash, "refund");
+    }
   }
 
   const rows: DailyPaymentAccountRow[] = [];
   for (const [accId, entry] of byAccount.entries()) {
-    const dayTotal = entry.transactions.reduce((s, t) => s + t.grand_total, 0);
+    const dayTotal = entry.transactions.reduce((s, t) => s + t.amount, 0);
     if (dayTotal === 0 && entry.accountName === "Unallocated") continue;
     rows.push({
       accountId: accId,

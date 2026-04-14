@@ -4,73 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { gateModulePageAction } from "@/lib/mutation-gate";
 import { clamp2, parseISODate } from "@/lib/financial-reports";
 import { getPaymentAccountAccessForUser } from "@/lib/payment-account-access";
-
-function n(v: unknown): number {
-  const x = Number(v ?? 0);
-  return Number.isFinite(x) ? x : 0;
-}
-
-/** First10 chars of an ISO / timestamptz string (YYYY-MM-DD). */
-function isoDateFromTs(ts: string | null | undefined): string {
-  const s = String(ts ?? "").trim();
-  return s ? s.slice(0, 10) : "";
-}
-
-type PosLineRefundRow = {
-  sales_invoice_id?: string;
-  qty?: number;
-  cl_qty?: number;
-  refunded_qty?: number;
-  refunded_cl_qty?: number;
-  value_tax_inc?: number;
-  updated_at?: string | null;
-};
-
-/** Tax-included line value that has been refunded (proportional to qty / cl_qty). */
-function lineRefundedMerchValue(ln: PosLineRefundRow): number {
-  const v = clamp2(n(ln.value_tax_inc));
-  const rq = n(ln.refunded_qty);
-  const rcq = n(ln.refunded_cl_qty);
-  if (rq <= 0 && rcq <= 0) return 0;
-  const q = n(ln.qty);
-  const cq = n(ln.cl_qty);
-  let frac = 1;
-  if (q > 0) frac *= Math.min(1, rq / q);
-  if (cq > 0) frac *= Math.min(1, rcq / cq);
-  if (q <= 0 && cq <= 0) frac = rq > 0 || rcq > 0 ? 1 : 0;
-  return clamp2(v * frac);
-}
-
-function posMerchRefundFromLines(
-  lines: PosLineRefundRow[]
-): { merchRefund: number; lastRefundLineTs: string | null } {
-  let merchRefund = 0;
-  let lastRefundLineTs: string | null = null;
-  for (const ln of lines) {
-    const part = lineRefundedMerchValue(ln);
-    if (part > 0) {
-      merchRefund = clamp2(merchRefund + part);
-      const u = String(ln.updated_at ?? "").trim();
-      if (u && (!lastRefundLineTs || u > lastRefundLineTs)) lastRefundLineTs = u;
-    }
-  }
-  return { merchRefund, lastRefundLineTs };
-}
-
-function posCashRefundOut(collected: number, merchRefund: number): number {
-  if (collected <= 0 || merchRefund <= 0) return 0;
-  return clamp2(Math.min(collected, merchRefund));
-}
-
-function posRefundBookDate(
-  invoiceDate: string,
-  refundedAt: string | null | undefined,
-  lastRefundLineTs: string | null
-): string {
-  if (refundedAt) return isoDateFromTs(refundedAt);
-  if (lastRefundLineTs) return isoDateFromTs(lastRefundLineTs);
-  return invoiceDate;
-}
+import {
+  posNum as n,
+  type PosLineRefundRow,
+  posCashRefundOut,
+  posMerchRefundFromLines,
+  posRefundBookDate,
+} from "@/lib/pos-cash-movements";
 
 type PaymentAccountRow = { id: string; code: string; name: string };
 

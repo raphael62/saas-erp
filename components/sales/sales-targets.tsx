@@ -1,21 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Plus, Trash2, Upload } from "lucide-react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { Download, Plus, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import {
   deleteSSRMonthlyTarget,
   deleteVSRMonthlyTarget,
-  importSSRMonthlyTargetsCsv,
-  importVSRMonthlyTargetsCsv,
+  importSSRMonthlyTargetsCsvFormAction,
+  importVSRMonthlyTargetsCsvFormAction,
   saveSSRMonthlyTarget,
   saveVSRMonthlyTarget,
+  type TargetsCsvImportState,
 } from "@/app/dashboard/sales/targets/actions";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 type Rep = { id: string; code?: string | null; name: string; sales_rep_type?: string | null; is_active?: boolean | null };
-type Product = { id: string; code?: string | null; name: string };
+type Product = { id: string; code?: string | null; sku?: string | null; name: string };
 type Customer = { id: string; tax_id?: string | null; name: string; price_type?: string | null };
 
 type PriceList = {
@@ -56,7 +58,7 @@ type VSRLine = {
   target_value?: number | null;
   unit_price?: number | null;
   row_no?: number | null;
-  products?: { id: string; code?: string | null; name: string } | null;
+  products?: { id: string; code?: string | null; sku?: string | null; name: string } | null;
 };
 
 type EditVsrLine = {
@@ -83,7 +85,7 @@ function repLabel(r: Rep) {
 }
 
 function productLabel(p: Product) {
-  const c = String(p.code ?? "").trim();
+  const c = String(p.code ?? "").trim() || String(p.sku ?? "").trim();
   return c ? `${c} — ${p.name}` : p.name;
 }
 
@@ -175,12 +177,18 @@ export function SalesTargets({
   const [vsrEditLines, setVsrEditLines] = useState<EditVsrLine[]>([blankLine("0"), blankLine("1")]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [ssrImporting, setSsrImporting] = useState(false);
-  const [vsrImporting, setVsrImporting] = useState(false);
-  const [ssrImportMsg, setSsrImportMsg] = useState<string | null>(null);
-  const [vsrImportMsg, setVsrImportMsg] = useState<string | null>(null);
-  const ssrFileRef = useRef<HTMLInputElement | null>(null);
-  const vsrFileRef = useRef<HTMLInputElement | null>(null);
+  const idleImport: TargetsCsvImportState = { status: "idle" };
+  const [ssrImportState, ssrImportFormAction, ssrImportPending] = useActionState(
+    importSSRMonthlyTargetsCsvFormAction,
+    idleImport
+  );
+  const [vsrImportState, vsrImportFormAction, vsrImportPending] = useActionState(
+    importVSRMonthlyTargetsCsvFormAction,
+    idleImport
+  );
+  const vsrDialogRef = useRef<HTMLDialogElement>(null);
+  const prevSsrImportStatus = useRef(ssrImportState.status);
+  const prevVsrImportStatus = useRef(vsrImportState.status);
 
   function openNewSSR() {
     setSsrEditing(null);
@@ -250,7 +258,11 @@ export function SalesTargets({
             return {
               key: String(i),
               product_id: String(l.product_id),
-              product_label: `${l.products?.code ? `${l.products.code} — ` : ""}${l.products?.name ?? ""}`,
+              product_label: (() => {
+                const c = String(l.products?.code ?? "").trim() || String(l.products?.sku ?? "").trim();
+                const n = l.products?.name ?? "";
+                return c ? `${c} — ${n}` : n;
+              })(),
               target_qty: String(l.target_qty ?? ""),
               price: priceStr,
               target_value: String(l.target_value ?? ""),
@@ -284,6 +296,30 @@ export function SalesTargets({
     });
     if (changed) setVsrEditLines(next);
   }, [vsrOpen, vsrCustomerId, vsrMonth]);
+
+  useEffect(() => {
+    const el = vsrDialogRef.current;
+    if (!el) return;
+    if (vsrOpen) {
+      if (!el.open) el.showModal();
+    } else if (el.open) {
+      el.close();
+    }
+  }, [vsrOpen]);
+
+  useEffect(() => {
+    if (vsrImportState.status === "success" && prevVsrImportStatus.current !== "success") {
+      void router.refresh();
+    }
+    prevVsrImportStatus.current = vsrImportState.status;
+  }, [vsrImportState, router]);
+
+  useEffect(() => {
+    if (ssrImportState.status === "success" && prevSsrImportStatus.current !== "success") {
+      void router.refresh();
+    }
+    prevSsrImportStatus.current = ssrImportState.status;
+  }, [ssrImportState, router]);
 
   async function onSaveSSR() {
     setSaving(true);
@@ -343,6 +379,7 @@ export function SalesTargets({
     return (
       products.find((p) => productLabel(p).toLowerCase() === q) ??
       products.find((p) => String(p.code ?? "").trim().toLowerCase() === q) ??
+      products.find((p) => String(p.sku ?? "").trim().toLowerCase() === q) ??
       products.find((p) => p.name.toLowerCase() === q) ??
       null
     );
@@ -426,30 +463,6 @@ export function SalesTargets({
     return String(Number((p * q).toFixed(2)));
   }
 
-  async function onImportSSR(file: File) {
-    setSsrImporting(true);
-    setSsrImportMsg(null);
-    const fd = new FormData();
-    fd.set("file", file);
-    const res = await importSSRMonthlyTargetsCsv(fd);
-    setSsrImporting(false);
-    if ("error" in res && res.error) return setSsrImportMsg(res.error);
-    setSsrImportMsg(`Imported ${res.count ?? 0} SSR target rows.`);
-    router.refresh();
-  }
-
-  async function onImportVSR(file: File) {
-    setVsrImporting(true);
-    setVsrImportMsg(null);
-    const fd = new FormData();
-    fd.set("file", file);
-    const res = await importVSRMonthlyTargetsCsv(fd);
-    setVsrImporting(false);
-    if ("error" in res && res.error) return setVsrImportMsg(res.error);
-    setVsrImportMsg(`Imported ${res.count ?? 0} VSR monthly targets.`);
-    router.refresh();
-  }
-
   return (
     <div className="space-y-6">
       <div>
@@ -461,47 +474,43 @@ export function SalesTargets({
 
       {showSSR && (
       <div className="space-y-3 rounded-lg border border-border p-4">
-        <div className="flex items-center justify-between gap-2">
-          <div>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold">SSR Monthly Targets</h2>
             <p className="text-muted-foreground text-xs">Monthly target value with commission percentage per shop sales rep.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="relative z-10 flex shrink-0 flex-wrap items-center gap-2">
             <Button size="sm" variant="outline" asChild>
               <a href="/import-templates/ssr-targets-template.csv" download>
                 <Download className="h-4 w-4" />
                 Template
               </a>
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={ssrImporting}
-              onClick={() => ssrFileRef.current?.click()}
-              className="gap-1"
-            >
-              <Upload className="h-4 w-4" />
-              {ssrImporting ? "Importing..." : "Import CSV"}
-            </Button>
-            <input
-              ref={ssrFileRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                await onImportSSR(file);
-                e.currentTarget.value = "";
-              }}
-            />
-            <Button onClick={openNewSSR} className="gap-1">
+            <form action={ssrImportFormAction} className="flex flex-wrap items-center gap-2">
+              <input
+                type="file"
+                name="file"
+                required
+                accept=".csv,text/csv"
+                className="border-input bg-background h-8 max-w-[220px] min-w-0 shrink rounded border px-2 text-sm file:mr-2 file:border-0 file:bg-transparent file:text-sm"
+              />
+              <Button type="submit" size="sm" variant="outline" disabled={ssrImportPending} className="gap-1">
+                <Upload className="h-4 w-4" />
+                {ssrImportPending ? "Importing..." : "Import CSV"}
+              </Button>
+            </form>
+            <Button type="button" onClick={openNewSSR} className="gap-1">
               <Plus className="h-4 w-4" />
               New SSR Target
             </Button>
           </div>
         </div>
-        {ssrImportMsg && <p className="text-muted-foreground text-xs">{ssrImportMsg}</p>}
+        {ssrImportState.status === "error" && (
+          <p className="text-destructive text-xs font-medium">{ssrImportState.message}</p>
+        )}
+        {ssrImportState.status === "success" && (
+          <p className="text-muted-foreground text-xs">Imported {ssrImportState.count} SSR target rows.</p>
+        )}
         <div className="overflow-auto rounded-md border border-border">
           <table className="w-full text-sm">
             <thead>
@@ -561,47 +570,43 @@ export function SalesTargets({
       )}
 
       <div className="space-y-3 rounded-lg border border-border p-4">
-        <div className="flex items-center justify-between gap-2">
-          <div>
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold">VSR Monthly Targets</h2>
             <p className="text-muted-foreground text-xs">Monthly targets by product quantity and value for van sales reps.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="relative z-10 flex shrink-0 flex-wrap items-center justify-end gap-2">
             <Button size="sm" variant="outline" asChild>
               <a href="/import-templates/vsr-targets-template.csv" download>
                 <Download className="h-4 w-4" />
                 Template
               </a>
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={vsrImporting}
-              onClick={() => vsrFileRef.current?.click()}
-              className="gap-1"
-            >
-              <Upload className="h-4 w-4" />
-              {vsrImporting ? "Importing..." : "Import CSV"}
-            </Button>
-            <input
-              ref={vsrFileRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                await onImportVSR(file);
-                e.currentTarget.value = "";
-              }}
-            />
-            <Button onClick={openNewVSR} className="gap-1">
+            <form action={vsrImportFormAction} className="flex flex-wrap items-center justify-end gap-2">
+              <input
+                type="file"
+                name="file"
+                required
+                accept=".csv,text/csv"
+                className="border-input bg-background h-8 max-w-[220px] min-w-0 shrink rounded border px-2 text-sm file:mr-2 file:border-0 file:bg-transparent file:text-sm"
+              />
+              <Button type="submit" size="sm" variant="outline" disabled={vsrImportPending} className="gap-1">
+                <Upload className="h-4 w-4" />
+                {vsrImportPending ? "Importing..." : "Import CSV"}
+              </Button>
+            </form>
+            <Button type="button" onClick={openNewVSR} className="gap-1">
               <Plus className="h-4 w-4" />
               New VSR Target
             </Button>
           </div>
         </div>
-        {vsrImportMsg && <p className="text-muted-foreground text-xs">{vsrImportMsg}</p>}
+        {vsrImportState.status === "error" && (
+          <p className="text-destructive text-xs font-medium">{vsrImportState.message}</p>
+        )}
+        {vsrImportState.status === "success" && (
+          <p className="text-muted-foreground text-xs">Imported {vsrImportState.count} VSR monthly targets.</p>
+        )}
         <div className="overflow-auto rounded-md border border-border">
           <table className="w-full text-sm">
             <thead>
@@ -664,6 +669,7 @@ export function SalesTargets({
         </div>
       </div>
 
+      {showSSR && (
       <Dialog
         open={ssrOpen}
         onOpenChange={setSsrOpen}
@@ -705,14 +711,32 @@ export function SalesTargets({
           </div>
         </div>
       </Dialog>
+      )}
 
-      <Dialog
-        open={vsrOpen}
-        onOpenChange={setVsrOpen}
-        title={vsrEditing ? "Edit VSR Target" : "New VSR Target"}
-        contentClassName="max-w-4xl"
-        bodyClassName="max-h-[85vh] overflow-y-auto p-4"
+      <dialog
+        ref={vsrDialogRef}
+        className={cn(
+          "fixed left-1/2 top-1/2 z-[200] m-0 max-h-[90vh] w-[min(96vw,56rem)] max-w-none -translate-x-1/2 -translate-y-1/2 border-0 bg-transparent p-0",
+          "[&::backdrop]:bg-black/50"
+        )}
+        onClose={() => setVsrOpen(false)}
       >
+        <div className="flex max-h-[90vh] flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+          <div
+            className="flex shrink-0 items-center justify-between px-4 py-3 text-white"
+            style={{ backgroundColor: "var(--navbar)" }}
+          >
+            <h2 className="text-lg font-semibold">{vsrEditing ? "Edit VSR Target" : "New VSR Target"}</h2>
+            <button
+              type="button"
+              onClick={() => vsrDialogRef.current?.close()}
+              className="rounded p-2 hover:bg-white/10"
+              aria-label="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="max-h-[85vh] overflow-y-auto p-4">
         <div className="space-y-3">
           {msg && <p className="bg-destructive/10 text-destructive rounded px-2 py-1.5 text-sm">{msg}</p>}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1031,11 +1055,17 @@ export function SalesTargets({
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setVsrOpen(false)}>Cancel</Button>
-            <Button disabled={saving} onClick={() => void onSaveVSR()}>Save</Button>
+            <Button type="button" variant="outline" onClick={() => vsrDialogRef.current?.close()}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={saving} onClick={() => void onSaveVSR()}>
+              Save
+            </Button>
           </div>
         </div>
-      </Dialog>
+          </div>
+        </div>
+      </dialog>
     </div>
   );
 }

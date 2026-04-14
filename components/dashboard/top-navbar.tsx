@@ -140,9 +140,9 @@ export default function TopNavbar({
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex flex-col">
+      <header className="sticky top-0 z-40 flex min-w-0 flex-col">
         <div
-          className="flex h-12 items-center gap-2 px-3 text-navbar-foreground sm:gap-3 sm:px-4 lg:px-6"
+          className="flex h-12 min-w-0 items-center gap-2 px-3 text-navbar-foreground sm:gap-3 sm:px-4 lg:px-6"
           style={{ backgroundColor: "var(--navbar)" }}
         >
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
@@ -267,8 +267,8 @@ export default function TopNavbar({
           </div>
         </div>
 
-        <div className="flex border-b border-border bg-background px-2 lg:px-4">
-          <nav className="flex gap-1 overflow-x-auto py-0">
+        <div className="flex min-h-0 min-w-0 border-b border-border bg-background px-2 lg:px-4">
+          <nav className="flex min-h-0 min-w-0 flex-1 gap-1 overflow-x-auto py-0 overscroll-x-contain">
             {(navItems.length > 0 ? navItems : []).map((item) => {
               const isActive =
                 item.href === "/dashboard"

@@ -1,8 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const BACKDROP_CLOSE_SUPPRESS_MS = 500;
 
 interface DialogProps {
   open: boolean;
@@ -25,13 +28,29 @@ export function Dialog({
   contentClassName,
   bodyClassName,
 }: DialogProps) {
-  if (!open) return null;
+  const suppressBackdropCloseUntilRef = React.useRef(0);
 
-  return (
+  React.useEffect(() => {
+    if (open) {
+      suppressBackdropCloseUntilRef.current = Date.now() + BACKDROP_CLOSE_SUPPRESS_MS;
+    }
+  }, [open]);
+
+  if (!open) return null;
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <>
       <div
-        className="fixed inset-0 z-50 bg-black/50"
-        onClick={() => onOpenChange(false)}
+        className="fixed inset-0 z-[90] bg-black/50"
+        onPointerDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (Date.now() < suppressBackdropCloseUntilRef.current) {
+            e.preventDefault();
+            return;
+          }
+          onOpenChange(false);
+        }}
         aria-hidden
       />
       <div
@@ -39,7 +58,7 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby="dialog-title"
         className={cn(
-          "fixed left-1/2 top-1/2 z-[51] w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-lg bg-background shadow-xl",
+          "fixed left-1/2 top-1/2 z-[91] w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-lg bg-background shadow-xl",
           contentClassName
         )}
         onMouseDown={(e) => e.stopPropagation()}
@@ -77,6 +96,7 @@ export function Dialog({
         </div>
         <div className={cn("max-h-[70vh] overflow-y-auto p-6", bodyClassName)}>{children}</div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }

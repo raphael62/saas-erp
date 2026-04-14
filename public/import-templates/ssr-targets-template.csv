@@ -1,2 +1,2 @@
 sales_rep_code,month_start,target_value,commission_pct,notes
-SSR001,2026-03,150000,5,March target for shop route
+REPLACE_WITH_YOUR_REP_CODE,2026-03,150000,5,Example row — use a code from Sales → Sales reps

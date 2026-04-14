@@ -195,69 +195,69 @@ export function CashReportClient({ orgName, initialReport, defaultFrom, defaultT
           onChange={(e) => setSearch(e.target.value)}
           className="h-9 min-w-[10rem] max-w-[14rem] rounded-md border border-input bg-background px-2.5 text-sm"
         />
-        <div className="relative" ref={filterPanelRef}>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="border-[var(--navbar)] bg-[var(--navbar)] text-[var(--navbar-foreground)] shadow-sm hover:opacity-90"
-          onClick={() => setFilterPanelOpen((o) => !o)}
-          aria-expanded={filterPanelOpen}
-          aria-haspopup="dialog"
-        >
-          <Search className="mr-1.5 h-4 w-4" />
-          Search (F3)
-        </Button>
-        {filterPanelOpen && (
-          <div
-            className="absolute left-0 top-full z-50 mt-1 w-[min(calc(100vw-2rem),20rem)] rounded-md border border-border bg-background p-3 shadow-lg"
-            role="dialog"
-            aria-label="Cash report filters"
+        <div className="relative shrink-0" ref={filterPanelRef}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="border-[var(--navbar)] bg-[var(--navbar)] text-[var(--navbar-foreground)] shadow-sm hover:opacity-90"
+            onClick={() => setFilterPanelOpen((o) => !o)}
+            aria-expanded={filterPanelOpen}
+            aria-haspopup="dialog"
           >
-            <div className="space-y-3 text-sm">
-              <div>
-                <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Date</span>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="date"
-                    value={from}
-                    onChange={(e) => setFrom(e.target.value)}
-                    className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 text-sm"
-                  />
-                  <span className="shrink-0 text-muted-foreground">~</span>
-                  <input
-                    type="date"
-                    value={to}
-                    onChange={(e) => setTo(e.target.value)}
-                    className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 text-sm"
-                  />
+            <Search className="mr-1.5 h-4 w-4" />
+            Search (F3)
+          </Button>
+          {filterPanelOpen && (
+            <div
+              className="absolute left-0 top-full z-50 mt-1 w-[min(calc(100vw-2rem),20rem)] rounded-md border border-border bg-background p-3 shadow-lg"
+              role="dialog"
+              aria-label="Cash report filters"
+            >
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Date</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="date"
+                      value={from}
+                      onChange={(e) => setFrom(e.target.value)}
+                      className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 text-sm"
+                    />
+                    <span className="shrink-0 text-muted-foreground">~</span>
+                    <input
+                      type="date"
+                      value={to}
+                      onChange={(e) => setTo(e.target.value)}
+                      className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 text-sm"
+                    />
+                  </div>
                 </div>
+                <div className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    id="cash-report-show-zeros"
+                    checked={showZeros}
+                    onChange={(e) => setShowZeros(e.target.checked)}
+                    className="mt-1 rounded"
+                  />
+                  <label htmlFor="cash-report-show-zeros" className="cursor-pointer leading-snug text-foreground">
+                    Include accounts with zero movement (all columns zero)
+                  </label>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={isPending}
+                  className="w-full bg-[var(--navbar)] text-[var(--navbar-foreground)] hover:opacity-90"
+                  onClick={applyFilters}
+                >
+                  {isPending ? "Loading…" : "Apply"}
+                </Button>
               </div>
-              <div className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  id="cash-report-show-zeros"
-                  checked={showZeros}
-                  onChange={(e) => setShowZeros(e.target.checked)}
-                  className="mt-1 rounded"
-                />
-                <label htmlFor="cash-report-show-zeros" className="cursor-pointer leading-snug text-foreground">
-                  Include accounts with zero movement (all columns zero)
-                </label>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                disabled={isPending}
-                className="w-full bg-[var(--navbar)] text-[var(--navbar-foreground)] hover:opacity-90"
-                onClick={applyFilters}
-              >
-                {isPending ? "Loading…" : "Apply"}
-              </Button>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
       <Button
         type="button"
         size="sm"

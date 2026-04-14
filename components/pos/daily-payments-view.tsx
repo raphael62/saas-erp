@@ -223,7 +223,11 @@ export function DailyPaymentsView({
                     </td>
                     <td
                       className={`border-b border-r border-border px-2 py-2 text-right tabular-nums font-semibold ${
-                        row.dayTotal > 0 ? "text-emerald-700 dark:text-emerald-400" : ""
+                        row.dayTotal > 0
+                          ? "text-emerald-700 dark:text-emerald-400"
+                          : row.dayTotal < 0
+                            ? "text-destructive"
+                            : ""
                       }`}
                     >
                       {fmtMoney(row.dayTotal)}
@@ -266,7 +270,7 @@ export function DailyPaymentsView({
         title={drillRow ? `${drillRow.accountName} — Transactions` : "Transactions"}
         subtitle={
           drillRow
-            ? `${drillRow.txnCount} receipt(s) • GH₵ ${fmtMoney(drillRow.dayTotal)}`
+            ? `${drillRow.txnCount} transaction(s) • Net GH₵ ${fmtMoney(drillRow.dayTotal)}`
             : undefined
         }
         showGearIcon={false}
@@ -293,19 +297,24 @@ export function DailyPaymentsView({
                       Location
                     </th>
                     <th className="border-b border-border px-3 py-2 text-right font-medium">
-                      Amount
+                      Amount (net)
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {drillRow.transactions.map((t) => (
+                  {drillRow.transactions.map((t) => {
+                    const receiptId = t.txn_kind === "refund" ? t.id.replace(/-refund$/, "") : t.id;
+                    return (
                     <tr
                       key={t.id}
                       className="hover:bg-muted/30"
-                      onClick={() => window.open(`/dashboard/pos/receipts/${t.id}`, "_blank")}
+                      onClick={() => window.open(`/dashboard/pos/receipts/${receiptId}`, "_blank")}
                     >
                       <td className="border-b border-r border-border px-3 py-2 font-medium">
                         {t.invoice_no}
+                        {t.txn_kind === "refund" ? (
+                          <span className="ml-2 text-xs font-normal text-destructive">refund</span>
+                        ) : null}
                       </td>
                       <td className="border-b border-r border-border px-3 py-2">
                         {t.customer_name}
@@ -313,11 +322,16 @@ export function DailyPaymentsView({
                       <td className="border-b border-r border-border px-3 py-2">
                         {t.location_name}
                       </td>
-                      <td className="border-b border-border px-3 py-2 text-right tabular-nums">
-                        GH₵ {fmtMoney(t.grand_total)}
+                                            <td
+                        className={`border-b border-border px-3 py-2 text-right tabular-nums ${
+                          t.amount < 0 ? "text-destructive" : ""
+                        }`}
+                      >
+                        GH₵ {fmtMoney(t.amount)}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

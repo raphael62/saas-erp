@@ -6,6 +6,8 @@ import { getProfileWithOrg } from "@/lib/org-context";
 import { NoOrgPrompt } from "@/components/dashboard/no-org-prompt";
 import { getUserTransactionScope, filterSalesRepsByScope } from "@/lib/user-transaction-scope";
 
+export const dynamic = "force-dynamic";
+
 export default async function SalesTargetsPage() {
   const supabase = await createClient();
   const {
@@ -30,7 +32,7 @@ export default async function SalesTargetsPage() {
 
   const vsrLinesRes = await supabase
     .from("sales_vsr_monthly_target_lines")
-    .select("id, vsr_monthly_target_id, product_id, target_qty, target_value, unit_price, row_no, products(id, code, name)")
+    .select("id, vsr_monthly_target_id, product_id, target_qty, target_value, unit_price, row_no, products(id, code, sku, name)")
     .eq("organization_id", orgId)
     .order("row_no");
 
@@ -51,7 +53,11 @@ export default async function SalesTargetsPage() {
     .eq("organization_id", orgId)
     .order("name");
 
-  const productsRes = await supabase.from("products").select("id, code, name").eq("organization_id", orgId).order("name");
+  const productsRes = await supabase
+    .from("products")
+    .select("id, code, sku, name")
+    .eq("organization_id", orgId)
+    .order("name");
 
   const customersRes = await supabase
     .from("customers")

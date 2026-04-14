@@ -17,7 +17,7 @@ import {
   listPosParkedCarts,
   savePosParkedCart,
   deletePosParkedCart,
-  getPosParkedCartPayload,
+  getPosParkedCartForResume,
 } from "@/app/dashboard/pos/parked-actions";
 import { dailyTargetFromMonthly } from "@/lib/month-working-days";
 
@@ -483,6 +483,9 @@ export function NewPOSSale({
   canRecordPosPayments = true,
   posPaymentBlockedReason = null,
   orgId = "",
+  isCashierUser = false,
+  locationProductQty = {},
+  posPromoReservationRows = [],
 }: {
   customers: Customer[];
   salesReps: SalesRep[];
@@ -510,6 +513,16 @@ export function NewPOSSale({
   posPaymentBlockedReason?: string | null;
   /** When set, parked sales sync to the server for shared cashier visibility. */
   orgId?: string;
+  /** RBAC: cashiers resuming a server parked cart cannot change rep/customer/location. */
+  isCashierUser?: boolean;
+  /** `locationId|productId` → qty from inventory_location_balances (fallback: product stock_quantity). */
+  locationProductQty?: Record<string, number>;
+  /** Promo cartons held by other (and optionally this) parked carts — from pos_parked_promo_reservations. */
+  posPromoReservationRows?: Array<{
+    promotion_id: string;
+    reserved_cartons: number;
+    pos_parked_cart_id: string;
+  }>;
 }) {
   const router = useRouter();
   const cashier = cashierName ?? "Cashier";
@@ -521,9 +534,33 @@ export function NewPOSSale({
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>([blankLine("0", defaultPriceType)]);
   const [lineDropdown, setLineDropdown] = useState<{ row: number; field: "code" | "name" } | null>(null);
+  /** Keeps “qty at location” visible after the product picker closes. */
+  const [stockRowIdx, setStockRowIdx] = useState<number | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptPrintData | null>(null);
+  /** Server-backed cart being edited (resume flow); cashier locks header fields while set. */
+  const [serverParkedCartId, setServerParkedCartId] = useState<string | null>(null);
+  const lockParkedHeader = Boolean(isCashierUser && serverParkedCartId);
+
+  const reservedExcludingCurrentCart = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of posPromoReservationRows) {
+      if (serverParkedCartId && r.pos_parked_cart_id === serverParkedCartId) continue;
+      const pid = String(r.promotion_id);
+      m[pid] = (m[pid] ?? 0) + Number(r.reserved_cartons ?? 0);
+    }
+    return m;
+  }, [posPromoReservationRows, serverParkedCartId]);
+
+  const reservedTotalByPromo = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of posPromoReservationRows) {
+      const pid = String(r.promotion_id);
+      m[pid] = (m[pid] ?? 0) + Number(r.reserved_cartons ?? 0);
+    }
+    return m;
+  }, [posPromoReservationRows]);
 
   const loadLegacyParkedFromStorage = useCallback((): ParkedItem[] => {
     if (typeof window === "undefined") return [];
@@ -662,6 +699,7 @@ export function NewPOSSale({
   }, [customers, salesRepId]);
 
   useEffect(() => {
+    if (lockParkedHeader) return;
     if (!salesRepId?.trim()) {
       setCustomerId("");
       return;
@@ -671,7 +709,7 @@ export function NewPOSSale({
       const list = customers.filter((c) => String(c.sales_rep_id ?? "") === salesRepId.trim());
       return list.some((c) => c.id === prev) ? prev : "";
     });
-  }, [salesRepId, customers]);
+  }, [salesRepId, customers, lockParkedHeader]);
 
   const searchParams = useSearchParams();
   const resumeKey = searchParams.get("resume");
@@ -718,13 +756,16 @@ export function NewPOSSale({
 
     if (UUID_RESUME.test(resumeKey)) {
       void (async () => {
-        const res = await getPosParkedCartPayload(resumeKey);
-        if (res.error || !res.payload) return;
-        applyPayload(res.payload as Parameters<typeof applyPayload>[0]);
-        const del = await deletePosParkedCart(resumeKey);
-        if (del.error) {
-          console.warn(del.error);
-        }
+        const res = await getPosParkedCartForResume(resumeKey);
+        if (res.error || !res.cart) return;
+        const { cart } = res;
+        setServerParkedCartId(cart.id);
+        const p = cart.payload as Parameters<typeof applyPayload>[0];
+        applyPayload({
+          ...p,
+          locationId: cart.location_id,
+          salesRepId: cart.sales_rep_id ?? "",
+        });
         await refreshParked();
         window.history.replaceState({}, "", "/dashboard/pos/new-sale");
       })();
@@ -772,6 +813,25 @@ export function NewPOSSale({
     }
     return { byId, byCode, byName };
   }, [products]);
+
+  const rowForStock = useMemo(() => {
+    const r = lineDropdown?.row ?? stockRowIdx;
+    if (r == null || r < 0 || r >= lines.length) return null;
+    return r;
+  }, [lineDropdown?.row, stockRowIdx, lines.length]);
+
+  function qtyForProductAtLocation(productId: string | undefined, locId: string | undefined): number | null {
+    if (!String(productId ?? "").trim() || !String(locId ?? "").trim()) return null;
+    const k = `${locId}|${productId}`;
+    if (Object.prototype.hasOwnProperty.call(locationProductQty, k)) {
+      return Number(locationProductQty[k] ?? 0);
+    }
+    const prod = productLookup.byId.get(String(productId));
+    if (prod != null && prod.stock_quantity != null && Number.isFinite(Number(prod.stock_quantity))) {
+      return Number(prod.stock_quantity);
+    }
+    return null;
+  }
 
   function toCartons(qty: number, unit: string | null | undefined, product: Product | undefined) {
     if (!Number.isFinite(qty) || qty <= 0) return 0;
@@ -869,7 +929,7 @@ export function NewPOSSale({
         return prev;
       }
     });
-  }, [saleDate, locationId, defaultPriceType, promotions, rulesByPromotionId, productLookup.byId, lines]);
+  }, [saleDate, locationId, defaultPriceType, promotions, rulesByPromotionId, productLookup.byId, lines, reservedExcludingCurrentCart]);
 
   function getEffectivePrice(productId: string, priceTypeName: string, onDate: string): { price: number; tax_rate: number } | null {
     const key = priceTypeName.trim().toLowerCase();
@@ -960,6 +1020,7 @@ export function NewPOSSale({
       tax_rate: taxRate,
       category: product.category,
     });
+    setStockRowIdx(index);
     setLineDropdown(null);
     if (focusCtnQty) {
       setTimeout(() => document.getElementById(`ctn-qty-${index}`)?.focus(), 0);
@@ -1154,10 +1215,17 @@ export function NewPOSSale({
       amountPaid: opts.amountPaid,
       paymentAccountId: opts.paymentAccountId,
       saleSettlement: opts.saleSettlement,
+      completedFromParkedCartId: serverParkedCartId ?? undefined,
     });
 
     if (result?.error) {
       throw new Error(result.error);
+    }
+
+    if (serverParkedCartId) {
+      const del = await deletePosParkedCart(serverParkedCartId);
+      if (del.error) console.warn(del.error);
+      setServerParkedCartId(null);
     }
 
     router.refresh();
@@ -1231,6 +1299,7 @@ export function NewPOSSale({
 
     setLines([blankLine("0", defaultPriceType)]);
     setEmptiesRcvd({});
+    setStockRowIdx(null);
     setReceiptOpen(true);
   }
 
@@ -1271,12 +1340,18 @@ export function NewPOSSale({
                 void (async () => {
                   if (orgId?.trim()) {
                     const r = await savePosParkedCart({
+                      id: serverParkedCartId ?? undefined,
                       locationId: locationId.trim(),
                       salesRepId: salesRepId.trim(),
                       payload: payload as Record<string, unknown>,
                     });
                     if (r.error) {
                       alert(r.error);
+                      return;
+                    }
+                    await refreshParked();
+                    if (serverParkedCartId) {
+                      router.refresh();
                       return;
                     }
                   } else {
@@ -1287,10 +1362,12 @@ export function NewPOSSale({
                       alert("Could not park sale.");
                       return;
                     }
+                    await refreshParked();
                   }
-                  await refreshParked();
+                  router.refresh();
                   setLines([blankLine("0", defaultPriceType)]);
                   setEmptiesRcvd({});
+                  setStockRowIdx(null);
                 })();
               }}
             >
@@ -1375,6 +1452,7 @@ export function NewPOSSale({
               value={salesRepId}
               onChange={(e) => setSalesRepId(e.target.value)}
               className={inputClass}
+              disabled={lockParkedHeader}
             >
               <option value="">-- Select --</option>
               {salesReps.map((r) => (
@@ -1382,6 +1460,11 @@ export function NewPOSSale({
                   {r.code ? `${r.code} - ${r.name}` : r.name}
                 </option>
               ))}
+              {lockParkedHeader &&
+              salesRepId &&
+              !salesReps.some((r) => r.id === salesRepId) ? (
+                <option value={salesRepId}>Sales rep (assigned)</option>
+              ) : null}
             </select>
           </div>
           <div>
@@ -1392,9 +1475,13 @@ export function NewPOSSale({
               value={customerId}
               onChange={(e) => setCustomerId(e.target.value)}
               className={inputClass}
-              disabled={!salesRepId?.trim()}
+              disabled={lockParkedHeader || !salesRepId?.trim()}
             >
-              {!salesRepId?.trim() ? (
+              {lockParkedHeader ? (
+                <option value={customerId}>
+                  {customers.find((c) => c.id === customerId)?.name ?? (customerId ? customerId : "—")}
+                </option>
+              ) : !salesRepId?.trim() ? (
                 <option value="">Select sales rep first</option>
               ) : customersForSelectedRep.length === 0 ? (
                 <option value="">No customers for this rep</option>
@@ -1416,6 +1503,7 @@ export function NewPOSSale({
               value={locationId}
               onChange={(e) => setLocationId(e.target.value)}
               className={inputClass}
+              disabled={lockParkedHeader}
             >
               <option value="">-- Select --</option>
               {locations.map((l) => (
@@ -1437,7 +1525,36 @@ export function NewPOSSale({
           </div>
         </div>
 
-        <p className="text-sm text-muted-foreground">Select a product to view available stock.</p>
+        {(() => {
+          const r = rowForStock;
+          const line = r != null ? lines[r] : null;
+          const pid = line?.product_id;
+          const locStock = qtyForProductAtLocation(pid, locationId);
+          const locName = locations.find((l) => l.id === locationId)?.name ?? "this location";
+          const hasPerLoc =
+            Boolean(locationId && pid && Object.prototype.hasOwnProperty.call(locationProductQty, `${locationId}|${pid}`));
+          if (!locationId?.trim()) {
+            return <p className="text-sm text-muted-foreground">Select a location to see quantity at that outlet.</p>;
+          }
+          if (!pid) {
+            return (
+              <p className="text-sm text-muted-foreground">
+                Choose a product on a line (item code or name) to see quantity at {locName}.
+              </p>
+            );
+          }
+          return (
+            <p className="text-sm text-muted-foreground">
+              Qty at <span className="font-medium text-foreground">{locName}</span>:{" "}
+              <span className="font-medium text-foreground">
+                {locStock != null ? fmtNum(locStock, 2) : "—"}
+              </span>
+              {!hasPerLoc && locStock != null ? (
+                <span className="text-xs"> (from product stock; add per-location balances for accuracy)</span>
+              ) : null}
+            </p>
+          );
+        })()}
 
         <div className="overflow-x-auto rounded border border-border">
           <table className="w-full table-fixed text-sm">
@@ -1503,7 +1620,11 @@ export function NewPOSSale({
                             updateLine(idx, { item_code: e.target.value });
                             setLineDropdown({ row: idx, field: "code" });
                           }}
-                          onFocus={() => !promoRow && setLineDropdown({ row: idx, field: "code" })}
+                          onFocus={() => {
+                            if (promoRow) return;
+                            setStockRowIdx(idx);
+                            setLineDropdown({ row: idx, field: "code" });
+                          }}
                           onBlur={() =>
                             setTimeout(() => {
                               if (lineDropdown?.row === idx && lineDropdown?.field === "code")
@@ -1552,7 +1673,11 @@ export function NewPOSSale({
                             updateLine(idx, { item_name: e.target.value });
                             setLineDropdown({ row: idx, field: "name" });
                           }}
-                          onFocus={() => !promoRow && setLineDropdown({ row: idx, field: "name" })}
+                          onFocus={() => {
+                            if (promoRow) return;
+                            setStockRowIdx(idx);
+                            setLineDropdown({ row: idx, field: "name" });
+                          }}
                           onBlur={() =>
                             setTimeout(() => {
                               if (lineDropdown?.row === idx && lineDropdown?.field === "name")
@@ -1900,11 +2025,35 @@ export function NewPOSSale({
             {promotions.length === 0 ? (
               <li className="text-muted-foreground">No active promotions</li>
             ) : (
-              promotions.slice(0, 5).map((p) => (
-                <li key={p.id} className="border-l-2 border-amber-400 pl-2">
-                  {p.name}
-                </li>
-              ))
+              promotions.slice(0, 5).map((p) => {
+                const pid = String(p.id);
+                const budget = p.promo_budget_cartons;
+                const consumed = n(p.consumed_cartons);
+                const reserved = n(reservedTotalByPromo[pid] ?? 0);
+                const remaining =
+                  budget == null ? null : Math.max(0, n(budget) - consumed - reserved);
+                return (
+                  <li key={p.id} className="border-l-2 border-amber-400 pl-2">
+                    <span className="font-medium">{p.name}</span>
+                    {budget == null ? (
+                      <span className="text-muted-foreground"> · Unlimited budget</span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · Left{" "}
+                        <span className="font-semibold text-foreground">{remaining != null ? remaining.toFixed(2) : "—"}</span>
+                        {" / "}
+                        {n(budget).toFixed(2)} ctns
+                        {reserved > 0 ? (
+                          <span className="block text-xs">
+                            ({reserved.toFixed(2)} ctns in parked sales — released if those carts are deleted or completed)
+                          </span>
+                        ) : null}
+                      </span>
+                    )}
+                  </li>
+                );
+              })
             )}
           </ul>
         </div>
@@ -1928,28 +2077,64 @@ export function NewPOSSale({
                     <p className={`font-semibold ${(ps.total as number) < 0 ? "text-destructive" : ""}`}>{fmtMoney(ps.total)}</p>
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    <Button
+                                       <Button
                       size="sm"
                       style={{ backgroundColor: "var(--navbar)", color: "white" }}
                       className="touch-manipulation border-transparent"
                       onClick={() => {
-                        const p = ps.payload as { saleDate?: string; customerId?: string; locationId?: string; salesRepId?: string; notes?: string; lines?: Line[]; emptiesRcvd?: Record<string, string> };
-                        if (p.saleDate) setSaleDate(p.saleDate);
-                        if (p.customerId) setCustomerId(p.customerId);
-                        if (p.locationId) setLocationId(p.locationId);
-                        if (p.salesRepId) setSalesRepId(p.salesRepId);
-                        if (p.notes) setNotes(p.notes);
-                        if (p.lines?.length) {
-                          const last = p.lines[p.lines.length - 1];
-                          const withBlank = hasLineData(last) ? [...p.lines, blankLine(String(p.lines.length), defaultPriceType)] : p.lines;
-                          setLines(withBlank.map((l, i) => ({ ...l, key: String(i) })));
-                        }
-                        if (p.emptiesRcvd) setEmptiesRcvd(p.emptiesRcvd);
                         void (async () => {
                           if (UUID_RESUME.test(ps.id)) {
-                            const r = await deletePosParkedCart(ps.id);
-                            if (r.error) console.warn(r.error);
+                            const res = await getPosParkedCartForResume(ps.id);
+                            if (res.error || !res.cart) {
+                              alert(res.error ?? "Could not load parked sale.");
+                              return;
+                            }
+                            const { cart } = res;
+                            setServerParkedCartId(cart.id);
+                            const p = cart.payload as {
+                              saleDate?: string;
+                              customerId?: string;
+                              notes?: string;
+                              lines?: Line[];
+                              emptiesRcvd?: Record<string, string>;
+                            };
+                            if (p.saleDate) setSaleDate(p.saleDate);
+                            if (p.customerId) setCustomerId(String(p.customerId));
+                            setLocationId(cart.location_id);
+                            setSalesRepId(cart.sales_rep_id ?? "");
+                            if (p.notes) setNotes(p.notes);
+                            if (p.lines?.length) {
+                              const last = p.lines[p.lines.length - 1];
+                              const withBlank = hasLineData(last)
+                                ? [...p.lines, blankLine(String(p.lines.length), defaultPriceType)]
+                                : p.lines;
+                              setLines(withBlank.map((l, i) => ({ ...l, key: String(i) })));
+                            }
+                            if (p.emptiesRcvd) setEmptiesRcvd(p.emptiesRcvd);
                           } else {
+                            setServerParkedCartId(null);
+                            const p = ps.payload as {
+                              saleDate?: string;
+                              customerId?: string;
+                              locationId?: string;
+                              salesRepId?: string;
+                              notes?: string;
+                              lines?: Line[];
+                              emptiesRcvd?: Record<string, string>;
+                            };
+                            if (p.saleDate) setSaleDate(p.saleDate);
+                            if (p.customerId) setCustomerId(p.customerId);
+                            if (p.locationId) setLocationId(p.locationId);
+                            if (p.salesRepId) setSalesRepId(p.salesRepId);
+                            if (p.notes) setNotes(p.notes);
+                            if (p.lines?.length) {
+                              const last = p.lines[p.lines.length - 1];
+                              const withBlank = hasLineData(last)
+                                ? [...p.lines, blankLine(String(p.lines.length), defaultPriceType)]
+                                : p.lines;
+                              setLines(withBlank.map((l, i) => ({ ...l, key: String(i) })));
+                            }
+                            if (p.emptiesRcvd) setEmptiesRcvd(p.emptiesRcvd);
                             try {
                               localStorage.removeItem(ps.id);
                             } catch {

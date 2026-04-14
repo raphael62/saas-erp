@@ -17,6 +17,7 @@ import {
   getPaymentAccountAccessForUser,
   userHasShopSalesRepRole,
 } from "@/lib/payment-account-access";
+import { userHasCashierRole } from "@/lib/pos-staff-roles";
 
 type PosSectionDef = {
   label: string;
@@ -92,7 +93,22 @@ export default async function POSSectionPage({
       }
     };
 
-    const [customersRes, repsRes, locationsRes, productsRes, priceTypesRes, priceListsRes, priceListItemsRes, promotionsRes, promotionRulesRes, ssrRes, paymentAccountsRes, paymentMethodsRes] = await Promise.all([
+    const [
+      customersRes,
+      repsRes,
+      locationsRes,
+      productsRes,
+      priceTypesRes,
+      priceListsRes,
+      priceListItemsRes,
+      promotionsRes,
+      promotionRulesRes,
+      ssrRes,
+      paymentAccountsRes,
+      paymentMethodsRes,
+      invBalancesRes,
+      promoParkResRes,
+    ] = await Promise.all([
       fetchSafe(() =>
         supabase
           .from("customers")
@@ -112,10 +128,41 @@ export default async function POSSectionPage({
       fetchSafe(() => supabase.from("sales_ssr_monthly_targets").select("id, sales_rep_id, month_start, target_value, commission_pct").eq("organization_id", orgId).order("month_start", { ascending: false })),
       fetchSafe(() => supabase.from("payment_accounts").select("id, code, name, account_type").eq("organization_id", orgId).eq("is_active", true).order("code")),
       fetchSafe(() => supabase.from("payment_methods").select("id, code, name").eq("organization_id", orgId).eq("is_active", true).order("name")),
+      fetchSafe(() =>
+        supabase.from("inventory_location_balances").select("product_id, location_id, quantity").eq("organization_id", orgId)
+      ),
+      fetchSafe(() =>
+        supabase
+          .from("pos_parked_promo_reservations")
+          .select("promotion_id, reserved_cartons, pos_parked_cart_id")
+          .eq("organization_id", orgId)
+      ),
     ]);
 
     const promotionRulesData = promotionRulesRes.data;
     const priceTypes = (priceTypesRes.data ?? []) as Array<{ name?: string }>;
+
+    const locationProductQty: Record<string, number> = {};
+    for (const row of invBalancesRes.data ?? []) {
+      const r = row as { product_id?: string | number; location_id?: string; quantity?: number | null };
+      const lid = String(r.location_id ?? "").trim();
+      const pid = String(r.product_id ?? "").trim();
+      if (!lid || !pid) continue;
+      locationProductQty[`${lid}|${pid}`] = Number(r.quantity ?? 0);
+    }
+
+    const posPromoReservationRows = (promoParkResRes.data ?? []).map((row) => {
+      const r = row as {
+        promotion_id?: string;
+        reserved_cartons?: number | null;
+        pos_parked_cart_id?: string;
+      };
+      return {
+        promotion_id: String(r.promotion_id ?? ""),
+        reserved_cartons: Number(r.reserved_cartons ?? 0),
+        pos_parked_cart_id: String(r.pos_parked_cart_id ?? ""),
+      };
+    }).filter((r) => r.promotion_id && r.pos_parked_cart_id);
 
     const scope = await getUserTransactionScope(supabase, user.id, orgId);
     const repsFiltered = filterSalesRepsByScope(
@@ -157,6 +204,7 @@ export default async function POSSectionPage({
 
     const payAccess = await getPaymentAccountAccessForUser(supabase, user.id, orgId);
     const shopSalesRep = await userHasShopSalesRepRole(supabase, user.id, orgId);
+    const isCashierUser = await userHasCashierRole(supabase, user.id, orgId);
     const allPaymentAccounts = Array.isArray(paymentAccountsRes?.data)
       ? (paymentAccountsRes.data as Array<{ id: string; code: string; name: string; account_type: string }>)
       : [];
@@ -193,6 +241,9 @@ export default async function POSSectionPage({
           paymentMethods={Array.isArray(paymentMethodsRes?.data) ? paymentMethodsRes.data : []}
           canRecordPosPayments={!shopSalesRep}
           posPaymentBlockedReason={posPaymentBlockedReason}
+          isCashierUser={isCashierUser}
+          locationProductQty={locationProductQty}
+          posPromoReservationRows={posPromoReservationRows}
         />
       </div>
     );
@@ -264,7 +315,9 @@ export default async function POSSectionPage({
         <div>
           <h1 className="text-xl font-semibold">Parked Sales</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Resume or delete parked bills.
+            Resume or delete parked bills. Cashiers only see carts for outlets they are assigned to (via default
+            location or user–location links). After resuming a server parked sale, cashiers can edit lines and
+            quantities but not the sales rep, customer, or location.
           </p>
         </div>
         <ParkedSalesList orgId={orgId} customers={customers} locations={locations} />
