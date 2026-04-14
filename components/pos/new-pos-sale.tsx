@@ -20,6 +20,7 @@ import {
   getPosParkedCartForResume,
 } from "@/app/dashboard/pos/parked-actions";
 import { dailyTargetFromMonthly } from "@/lib/month-working-days";
+import { formatParkedSaleReceiptNo } from "@/lib/pos-parked-serial";
 
 const POS_PARKED_PREFIX = "pos-parked-";
 
@@ -577,7 +578,7 @@ export function NewPOSSale({
           : "—";
         const locationName = locations.find((l) => l.id === payload.locationId)?.name ?? "—";
         const total: number = Number.isFinite(payload.grandTotal) ? (payload.grandTotal ?? 0) : 0;
-        const receiptNo = `PARK-${(payload.saleDate ?? "").replace(/-/g, "")}-${key.replace(POS_PARKED_PREFIX, "").slice(-6)}`;
+        const receiptNo = formatParkedSaleReceiptNo(payload.saleDate, key);
         const ts = payload.parkedAt ? new Date(payload.parkedAt).getTime() : parseInt(key.replace(POS_PARKED_PREFIX, ""), 10);
         const parkedAt = Number.isFinite(ts) ? new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: true }) : "—";
         items.push({
@@ -622,8 +623,7 @@ export function NewPOSSale({
           : "—";
         const locationName = locations.find((l) => l.id === p.locationId)?.name ?? "—";
         const total = Number.isFinite(p.grandTotal) ? (p.grandTotal ?? 0) : 0;
-        const shortId = row.id.replace(/-/g, "").slice(-6);
-        const receiptNo = `PARK-${(p.saleDate ?? "").replace(/-/g, "")}-${shortId}`;
+        const receiptNo = formatParkedSaleReceiptNo(p.saleDate, row.id);
         const ts = row.updated_at ? new Date(row.updated_at).getTime() : NaN;
         const parkedAt = Number.isFinite(ts)
           ? new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: true })
@@ -1223,8 +1223,6 @@ export function NewPOSSale({
     }
 
     if (serverParkedCartId) {
-      const del = await deletePosParkedCart(serverParkedCartId);
-      if (del.error) console.warn(del.error);
       setServerParkedCartId(null);
     }
 
@@ -2144,29 +2142,31 @@ export function NewPOSSale({
                     >
                       Resume
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="touch-manipulation text-destructive"
-                      onClick={() => {
-                        if (!confirm("Delete this parked sale?")) return;
-                        void (async () => {
-                          if (UUID_RESUME.test(ps.id)) {
-                            const r = await deletePosParkedCart(ps.id);
-                            if (r.error) alert(r.error);
-                          } else {
-                            try {
-                              localStorage.removeItem(ps.id);
-                            } catch {
-                              /* ignore */
+                    {!isCashierUser ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="touch-manipulation text-destructive"
+                        onClick={() => {
+                          if (!confirm("Delete this parked sale?")) return;
+                          void (async () => {
+                            if (UUID_RESUME.test(ps.id)) {
+                              const r = await deletePosParkedCart(ps.id);
+                              if (r.error) alert(r.error);
+                            } else {
+                              try {
+                                localStorage.removeItem(ps.id);
+                              } catch {
+                                /* ignore */
+                              }
                             }
-                          }
-                          await refreshParked();
-                        })();
-                      }}
-                    >
-                      Delete
-                    </Button>
+                            await refreshParked();
+                          })();
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    ) : null}
                   </div>
                 </li>
               ))

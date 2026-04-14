@@ -6,6 +6,14 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { RotateCcw } from "lucide-react";
 import { refundPosReceipt, refundPosReceiptLine } from "@/app/dashboard/pos/actions";
+import {
+  ThermalReceiptContent,
+  THERMAL_RECEIPT_GOOGLE_FONT_HREF,
+  thermalReceiptPrintCss,
+  thermalReceiptPrintHeadInnerHtml,
+  runThermalReceiptPrint,
+  type ReceiptPrintData,
+} from "@/components/pos/receipt-thermal-content";
 
 function fmtNum(value: number, decimals = 2) {
   return (Number.isFinite(value) ? value : 0).toLocaleString(undefined, {
@@ -24,43 +32,25 @@ type ReceiptLine = {
   isFullyRefunded: boolean;
 };
 
-type ReceiptData = {
-  companyName: string;
-  locationName: string;
-  locationPhone?: string;
-  orgPhone?: string;
-  invNo: string;
-  cashier: string;
-  salesRep: string;
-  customerName?: string;
-  date: string;
-  time: string;
-  lines: Array<{ item: string; unit: string; qty: number; price: number; amount: number }>;
-  netTotal: number;
-  vatRate: number;
-  vatAmount: number;
-  total: number;
-  emptiesDeposit: number;
-  grandTotal: number;
-  amountPaid: number;
-  change: number;
-  emptiesReceived: Array<{ emptiesType: string; qtyCtn: number }>;
-};
+type ReceiptData = ReceiptPrintData;
 
 export function ReceiptPrintPage({
   data,
   invoiceId,
   refundedAt,
   receiptLines,
+  allowRefund = true,
 }: {
   data: ReceiptData;
   invoiceId: string;
   refundedAt: string | null;
   receiptLines: ReceiptLine[];
+  allowRefund?: boolean;
 }) {
   const printRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const [refunding, setRefunding] = useState<string | null>(null);
+  const widthMm = 80;
 
   const handlePrint = () => {
     if (!printRef.current) return;
@@ -73,23 +63,18 @@ export function ReceiptPrintPage({
       <!DOCTYPE html>
       <html>
         <head>
+          <meta charset="utf-8" />
           <title>Receipt ${data.invNo}</title>
-          <style>
-            body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 13px; margin: 0; padding: 8px; font-variant-numeric: tabular-nums; }
-            .receipt { width: 80mm; max-width: 100mm; }
-          </style>
+          ${thermalReceiptPrintHeadInnerHtml()}
+          <style>${thermalReceiptPrintCss(widthMm)}</style>
         </head>
         <body>
-          <div class="receipt">${printContent}</div>
+          ${printContent}
         </body>
       </html>
     `);
     printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+    runThermalReceiptPrint(printWindow);
   };
 
   const handleFullRefund = async () => {
@@ -135,7 +120,7 @@ export function ReceiptPrintPage({
           </Button>
           {refundedAt ? (
             <span className="text-sm text-muted-foreground">Refunded</span>
-          ) : (
+          ) : allowRefund ? (
             <Button
               size="sm"
               variant="outline"
@@ -146,88 +131,30 @@ export function ReceiptPrintPage({
               <RotateCcw className="mr-1 h-4 w-4" />
               Refund Receipt
             </Button>
-          )}
+          ) : null}
         </span>
       </div>
 
-      <div
-        ref={printRef}
-        className="rounded border border-border bg-white p-6 font-mono text-sm"
-        style={{ fontVariantNumeric: "tabular-nums" }}
-      >
-        <div className="text-center">
-          <p className="font-semibold">{data.companyName}</p>
-          <p>{data.locationName}</p>
-          {data.locationPhone ? <p>Tel: {data.locationPhone}</p> : null}
-          {data.orgPhone ? <p>Tel: {data.orgPhone}</p> : null}
-          <p className="mt-1 font-semibold">REPRINT</p>
-        </div>
-
-        <div className="my-2 border-b border-dashed border-border" />
-
-        <div className="flex justify-between gap-4 text-sm">
-          <div>
-            <p>Inv No. {data.invNo}</p>
-            <p>Cashier: {data.cashier}</p>
-            <p>Sales Rep: {data.salesRep}</p>
-          </div>
-          <div className="text-right">
-            <p>Date: {data.date}</p>
-            {data.time ? <p>Time: {data.time}</p> : null}
-          </div>
-        </div>
-
-        <div className="my-2 border-b border-dashed border-border" />
-
-        <div className="space-y-1 text-sm">
-          {data.lines.map((line, i) => (
-            <div key={i} className="flex justify-between gap-2">
-              <span className="min-w-0 truncate">{line.item}</span>
-              <span className="shrink-0">{line.unit}</span>
-              <span className="shrink-0">{line.qty}</span>
-              <span className="shrink-0">{fmtNum(line.price, 2)}</span>
-              <span className="shrink-0">{fmtNum(line.amount, 2)}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="my-2 border-b border-dashed border-border" />
-
-        <div className="space-y-0.5 text-sm">
-          <div className="flex justify-between">
-            <span>Net Total:</span>
-            <span>{fmtNum(data.netTotal, 2)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>VAT@{fmtNum(data.vatRate, 0)}%:</span>
-            <span>{fmtNum(data.vatAmount, 2)}</span>
-          </div>
-          <div className="flex justify-between font-semibold">
-            <span>TOTAL:</span>
-            <span>{fmtNum(data.total, 2)}</span>
-          </div>
-          {data.emptiesDeposit !== 0 && (
-            <>
-              <div className="flex justify-between">
-                <span>Empties Deposit:</span>
-                <span>{fmtNum(data.emptiesDeposit, 2)}</span>
-              </div>
-              <div className="flex justify-between font-bold">
-                <span>GRAND TOTAL:</span>
-                <span>{fmtNum(data.grandTotal, 2)}</span>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="my-2 border-b border-dashed border-border" />
-
-        <div className="text-center text-xs text-muted-foreground">
-          <p>THANK YOU FOR DOING BUSINESS WITH US</p>
+      <div className="no-print rounded border border-border bg-muted/30 p-4">
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href={THERMAL_RECEIPT_GOOGLE_FONT_HREF} rel="stylesheet" />
+        <style>{thermalReceiptPrintCss(widthMm)}</style>
+        <div
+          ref={printRef}
+          className="rounded border border-border bg-white shadow-sm"
+          style={{
+            width: `${widthMm}mm`,
+            maxWidth: "100%",
+            margin: "0 auto",
+            padding: "8px",
+          }}
+        >
+          <ThermalReceiptContent variant="reprint" data={data} />
         </div>
       </div>
 
-      {!refundedAt && receiptLines.length > 0 && (
+      {!refundedAt && allowRefund && receiptLines.length > 0 && (
         <div className="rounded border border-border bg-muted/20 p-4">
           <h3 className="mb-3 text-sm font-semibold">Refund by item</h3>
           <div className="space-y-2">

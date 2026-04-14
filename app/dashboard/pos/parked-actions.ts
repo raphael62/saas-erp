@@ -271,10 +271,12 @@ export async function savePosParkedCart(input: SavePosParkedCartInput): Promise<
   return { ok: true, id: newId };
 }
 
-export async function deletePosParkedCart(cartId: string): Promise<{ ok?: boolean; error?: string }> {
-  const gate = await gateModulePageAction("pos", "new-sale", "edit");
-  if (!gate.ok) return { error: gate.error };
-  const { supabase, orgId } = gate;
+/** Reverse inventory/promo state and delete row (no RBAC). Used after a successful POS checkout. */
+export async function deletePosParkedCartAfterSuccessfulSale(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orgId: string,
+  cartId: string
+): Promise<{ ok?: boolean; error?: string }> {
   const id = String(cartId ?? "").trim();
   if (!id) return { error: "Cart id is required." };
 
@@ -297,6 +299,16 @@ export async function deletePosParkedCart(cartId: string): Promise<{ ok?: boolea
   revalidatePath("/dashboard/pos/parked");
   revalidatePath("/dashboard/pos/new-sale");
   return { ok: true };
+}
+
+export async function deletePosParkedCart(cartId: string): Promise<{ ok?: boolean; error?: string }> {
+  const gate = await gateModulePageAction("pos", "new-sale", "edit");
+  if (!gate.ok) return { error: gate.error };
+  const { supabase, orgId, userId } = gate;
+  if (await userHasCashierRole(supabase, userId, orgId)) {
+    return { error: "Cashiers cannot delete parked sales." };
+  }
+  return deletePosParkedCartAfterSuccessfulSale(supabase, orgId, cartId);
 }
 
 export async function getPosParkedCartPayload(cartId: string): Promise<{

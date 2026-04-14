@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { userHasCashierRole } from "@/lib/pos-staff-roles";
 import { ReceiptPrintPage } from "./ReceiptPrintPage";
 
 export default async function ReceiptPage({
@@ -15,7 +16,6 @@ export default async function ReceiptPage({
     .select(
       `
       id, invoice_no, invoice_date, grand_total, sub_total, tax_total, empties_value, refunded_at, organization_id, cashier_id,
-      customers(name),
       locations(name, phone),
       sales_reps(name)
     `
@@ -27,6 +27,14 @@ export default async function ReceiptPage({
   if (!inv) notFound();
 
   const refundedAt = (inv as { refunded_at?: string | null }).refunded_at ?? null;
+  const orgIdForRole = (inv as { organization_id?: string }).organization_id;
+  const {
+    data: { user: receiptUser },
+  } = await supabase.auth.getUser();
+  let isCashier = false;
+  if (receiptUser?.id && orgIdForRole) {
+    isCashier = await userHasCashierRole(supabase, receiptUser.id, orgIdForRole);
+  }
 
   let orgName = "";
   let orgPhone = "";
@@ -58,7 +66,6 @@ export default async function ReceiptPage({
     .order("row_no");
 
   const loc = inv.locations as { name?: string; phone?: string } | null;
-  const cust = inv.customers as { name?: string } | null;
   const rep = inv.sales_reps as { name?: string } | null;
 
   const n = (v: unknown) => {
@@ -122,7 +129,6 @@ export default async function ReceiptPage({
     invNo: inv.invoice_no,
     cashier: cashierName,
     salesRep: rep?.name ?? "—",
-    customerName: cust?.name ?? "Walk-in",
     date: dateStr,
     time: "",
     lines: receiptLines.map(({ lineId, isFullyRefunded, ...rest }) => rest),
@@ -143,6 +149,7 @@ export default async function ReceiptPage({
       invoiceId={id}
       refundedAt={refundedAt}
       receiptLines={receiptLines}
+      allowRefund={!isCashier}
     />
   );
 }

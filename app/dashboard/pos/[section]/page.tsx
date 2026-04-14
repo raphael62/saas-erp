@@ -309,6 +309,10 @@ export default async function POSSectionPage({
       parkedScope,
       (locationsRes.data ?? []) as Array<{ id: string; name: string }>
     );
+    let parkedCashier = false;
+    if (parkedUser?.id) {
+      parkedCashier = await userHasCashierRole(supabase, parkedUser.id, orgId);
+    }
 
     return (
       <div className="space-y-4">
@@ -320,7 +324,12 @@ export default async function POSSectionPage({
             quantities but not the sales rep, customer, or location.
           </p>
         </div>
-        <ParkedSalesList orgId={orgId} customers={customers} locations={locations} />
+        <ParkedSalesList
+          orgId={orgId}
+          customers={customers}
+          locations={locations}
+          allowDeleteParked={!parkedCashier}
+        />
       </div>
     );
   }

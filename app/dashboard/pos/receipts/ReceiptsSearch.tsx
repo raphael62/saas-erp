@@ -24,7 +24,7 @@ function fmtMoney(value: number) {
   })}`;
 }
 
-export function ReceiptsSearch() {
+export function ReceiptsSearch({ allowRefund = true }: { allowRefund?: boolean }) {
   const today = new Date().toISOString().slice(0, 10);
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
@@ -162,7 +162,7 @@ export function ReceiptsSearch() {
                       </Link>
                       {r.refunded_at ? (
                         <span className="text-muted-foreground text-xs">Refunded</span>
-                      ) : (
+                      ) : allowRefund ? (
                         <button
                           type="button"
                           onClick={() => handleRefund(r)}
@@ -173,7 +173,7 @@ export function ReceiptsSearch() {
                           <RotateCcw className="h-3.5 w-3.5" />
                           Refund
                         </button>
-                      )}
+                      ) : null}
                     </span>
                   </td>
                 </tr>

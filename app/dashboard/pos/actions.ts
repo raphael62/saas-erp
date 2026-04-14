@@ -10,6 +10,8 @@ import {
   userHasShopSalesRepRole,
   assertPaymentAccountIdAllowed,
 } from "@/lib/payment-account-access";
+import { userHasCashierRole } from "@/lib/pos-staff-roles";
+import { deletePosParkedCartAfterSuccessfulSale } from "@/app/dashboard/pos/parked-actions";
 import {
   addCalendarDays,
   type PosLineRefundRow,
@@ -74,37 +76,49 @@ function isPromoLine(line: PosSaleLineInput): boolean {
   );
 }
 
+/** yyyymmdd + daily sequence (e.g. 20260414001). */
+function formatPosDaySeq(seq: number): string {
+  if (!Number.isFinite(seq) || seq < 1) return "001";
+  if (seq < 1000) return String(seq).padStart(3, "0");
+  return String(seq);
+}
+
 async function generatePosInvoiceNo(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orgId: string,
   saleDate: string
 ): Promise<string> {
-  const prefix = `POS-${saleDate.replace(/-/g, "")}-`;
+  let dateCompact = saleDate.replace(/-/g, "").slice(0, 8);
+  if (dateCompact.length !== 8 || !/^\d{8}$/.test(dateCompact)) {
+    dateCompact = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  }
+  const prefix = dateCompact;
   const { data: seqRaw, error } = await supabase.rpc("next_sales_invoice_seq_for_prefix", {
     p_organization_id: orgId,
     p_prefix: prefix,
   });
   if (error) {
-    const { data } = await supabase
+    const { data: rows } = await supabase
       .from("sales_invoices")
       .select("invoice_no")
       .eq("organization_id", orgId)
       .eq("type_status", "pos")
-      .like("invoice_no", `${prefix}%`)
-      .order("invoice_no", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const last = (data as { invoice_no?: string } | null)?.invoice_no;
-    let seq = 1;
-    if (last) {
-      const suffix = last.replace(prefix, "");
-      const parsed = parseInt(suffix, 10);
-      if (Number.isFinite(parsed)) seq = parsed + 1;
+      .like("invoice_no", `${prefix}%`);
+    let maxSeq = 0;
+    for (const row of (rows ?? []) as { invoice_no?: string }[]) {
+      const no = String(row.invoice_no ?? "");
+      if (no.startsWith(prefix) && no.length > prefix.length) {
+        const suffix = no.slice(prefix.length);
+        if (/^\d+$/.test(suffix)) {
+          const parsed = parseInt(suffix, 10);
+          if (Number.isFinite(parsed)) maxSeq = Math.max(maxSeq, parsed);
+        }
+      }
     }
-    return `${prefix}${String(seq).padStart(4, "0")}`;
+    return `${dateCompact}${formatPosDaySeq(maxSeq + 1)}`;
   }
   const seq = typeof seqRaw === "number" && Number.isFinite(seqRaw) ? seqRaw : 1;
-  return `${prefix}${String(seq).padStart(4, "0")}`;
+  return `${dateCompact}${formatPosDaySeq(seq)}`;
 }
 
 export async function savePosSale(input: PosSaleInput) {
@@ -532,6 +546,14 @@ export async function savePosSale(input: PosSaleInput) {
     }
   }
 
+  const parkedSaleCleanupId = String(input.completedFromParkedCartId ?? "").trim();
+  if (parkedSaleCleanupId) {
+    const cleanup = await deletePosParkedCartAfterSuccessfulSale(supabase, orgId, parkedSaleCleanupId);
+    if (cleanup.error) {
+      console.warn("[savePosSale] parked cart cleanup:", cleanup.error);
+    }
+  }
+
   revalidatePath("/dashboard/pos");
   revalidatePath("/dashboard/pos/receipts");
   revalidatePath("/dashboard/pos/daily-payments");
@@ -633,6 +655,9 @@ export async function refundPosReceipt(invoiceId: string): Promise<{ error?: str
   const gate = await gateModulePageAction("pos", "receipts", "edit");
   if (!gate.ok) return { error: gate.error };
   const { supabase, orgId, userId } = gate;
+  if (await userHasCashierRole(supabase, userId, orgId)) {
+    return { error: "Cashiers cannot process refunds." };
+  }
 
   const { data: inv } = await supabase
     .from("sales_invoices")
@@ -690,6 +715,9 @@ export async function refundPosReceiptLine(
   const gate = await gateModulePageAction("pos", "receipts", "edit");
   if (!gate.ok) return { error: gate.error };
   const { supabase, orgId, userId } = gate;
+  if (await userHasCashierRole(supabase, userId, orgId)) {
+    return { error: "Cashiers cannot process refunds." };
+  }
 
   const { data: line } = await supabase
     .from("sales_invoice_lines")

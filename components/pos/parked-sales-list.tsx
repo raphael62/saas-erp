@@ -8,6 +8,7 @@ import {
   deletePosParkedCart,
   type PosParkedCartRow,
 } from "@/app/dashboard/pos/parked-actions";
+import { formatParkedSaleReceiptNo } from "@/lib/pos-parked-serial";
 
 const POS_PARKED_PREFIX = "pos-parked-";
 
@@ -69,8 +70,7 @@ function mapServerRows(
       : "—";
     const locationName = locations.find((l) => l.id === p.locationId)?.name ?? "—";
     const total = Number.isFinite(p.grandTotal) ? (p.grandTotal ?? 0) : 0;
-    const shortId = row.id.replace(/-/g, "").slice(-6);
-    const receiptNo = `PARK-${(p.saleDate ?? "").replace(/-/g, "")}-${shortId}`;
+    const receiptNo = formatParkedSaleReceiptNo(p.saleDate, row.id);
     return {
       id: row.id,
       receipt_no: receiptNo,
@@ -101,7 +101,7 @@ function loadLegacyLocal(
       const locationName =
         locations.find((l) => l.id === payload.locationId)?.name ?? "—";
       const total: number = Number.isFinite(payload.grandTotal) ? (payload.grandTotal ?? 0) : 0;
-      const receiptNo = `PARK-${(payload.saleDate ?? "").replace(/-/g, "")}-${key.replace(POS_PARKED_PREFIX, "").slice(-6)}`;
+      const receiptNo = formatParkedSaleReceiptNo(payload.saleDate, key);
       result.push({
         id: key,
         receipt_no: receiptNo,
@@ -122,10 +122,13 @@ export function ParkedSalesList({
   orgId = "",
   customers = [],
   locations = [],
+  allowDeleteParked = true,
 }: {
   orgId?: string;
   customers?: Customer[];
   locations?: Location[];
+  /** When false (e.g. POS cashier), delete is hidden and blocked server-side for server carts. */
+  allowDeleteParked?: boolean;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<ParkedItem[]>([]);
@@ -154,6 +157,7 @@ export function ParkedSalesList({
   };
 
   const handleDelete = (item: ParkedItem) => {
+    if (!allowDeleteParked) return;
     if (!confirm("Delete this parked sale?")) return;
     void (async () => {
       if (UUID_RESUME.test(item.id)) {
@@ -215,14 +219,16 @@ export function ParkedSalesList({
               >
                 Resume
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive"
-                onClick={() => handleDelete(item)}
-              >
-                Delete
-              </Button>
+              {allowDeleteParked ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive"
+                  onClick={() => handleDelete(item)}
+                >
+                  Delete
+                </Button>
+              ) : null}
             </div>
           </div>
         ))}

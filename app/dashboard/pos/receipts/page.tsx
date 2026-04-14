@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requireOrgId } from "@/lib/org-context";
+import { userHasCashierRole } from "@/lib/pos-staff-roles";
 import { ReceiptsSearch } from "./ReceiptsSearch";
 
 export default async function ReceiptsPage() {
@@ -9,6 +11,9 @@ export default async function ReceiptsPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const { userId, orgId } = await requireOrgId();
+  const isCashier = Boolean(orgId) && (await userHasCashierRole(supabase, userId, orgId!));
+
   return (
     <div className="space-y-4">
       <div>
@@ -17,7 +22,7 @@ export default async function ReceiptsPage() {
           Search POS receipts by date and print.
         </p>
       </div>
-      <ReceiptsSearch />
+      <ReceiptsSearch allowRefund={!isCashier} />
     </div>
   );
 }
