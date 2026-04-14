@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RotateCcw } from "lucide-react";
 import { refundPosReceipt, refundPosReceiptLine } from "@/app/dashboard/pos/actions";
 import {
-  ThermalReceiptContent,
+  ThermalReceiptPrintSlips,
   THERMAL_RECEIPT_GOOGLE_FONT_HREF,
   thermalReceiptPrintCss,
   thermalReceiptPrintHeadInnerHtml,
@@ -150,7 +150,7 @@ export function ReceiptPrintPage({
             padding: "8px",
           }}
         >
-          <ThermalReceiptContent variant="reprint" data={data} />
+          <ThermalReceiptPrintSlips data={data} />
         </div>
       </div>
 

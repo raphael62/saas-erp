@@ -101,6 +101,18 @@ export function thermalReceiptPrintCss(widthMm: number): string {
       max-width: ${widthMm}mm;
       margin: 0 auto;
     }
+    @media screen {
+      .tr-print-second-slip {
+        display: none !important;
+      }
+    }
+    @media print {
+      .tr-print-second-slip {
+        display: block !important;
+        break-before: page;
+        page-break-before: always;
+      }
+    }
     .tr-brand {
       text-align: center;
       margin-bottom: 10px;
@@ -133,9 +145,10 @@ export function thermalReceiptPrintCss(widthMm: number): string {
     }
     .tr-sep {
       border: none;
-      border-top: 1px dashed #666;
+      border-top: 2px dotted #1a1a1a;
       margin: 10px 0;
       width: 100%;
+      opacity: 1;
     }
     .tr-meta {
       display: grid;
@@ -175,7 +188,7 @@ export function thermalReceiptPrintCss(widthMm: number): string {
       letter-spacing: 0.05em;
       color: #000000;
       padding: 0 2px 6px 2px;
-      border-bottom: 1px dashed #888;
+      border-bottom: 2px dotted #333333;
       vertical-align: bottom;
       line-height: 1.2;
     }
@@ -202,9 +215,9 @@ export function thermalReceiptPrintCss(widthMm: number): string {
     .tr-lines tbody td {
       padding: 4px 1px;
       vertical-align: top;
-      border-bottom: 1px dotted #ddd;
-      font-weight: 400;
-      color: #4a4a4a;
+      border-bottom: 2px dotted #555555;
+      font-weight: 500;
+      color: #1a1a1a;
     }
     .tr-lines tbody tr:last-child td {
       border-bottom: none;
@@ -214,17 +227,17 @@ export function thermalReceiptPrintCss(widthMm: number): string {
       overflow-wrap: anywhere;
       hyphens: auto;
       line-height: 1.25;
-      font-weight: 400;
+      font-weight: 500;
       padding-right: 2px;
     }
     .tr-lines .tr-cell-unit {
       text-align: center;
-      font-weight: 400;
+      font-weight: 500;
     }
     .tr-lines .tr-cell-num {
       text-align: right;
       white-space: nowrap;
-      font-weight: 400;
+      font-weight: 500;
     }
     .tr-totals {
       font-size: 11px;
@@ -242,7 +255,7 @@ export function thermalReceiptPrintCss(widthMm: number): string {
       font-size: 12px;
       margin-top: 8px;
       padding-top: 6px;
-      border-top: 1px solid #bbb;
+      border-top: 2px dotted #333333;
     }
     .tr-pay {
       font-size: 11px;
@@ -286,10 +299,11 @@ export function ThermalReceiptContent({
   variant,
   data,
 }: {
-  variant: "original" | "reprint";
+  variant: "original" | "duplicate" | "reprint";
   data: ReceiptPrintData;
 }) {
-  const title = variant === "reprint" ? "Reprint" : "Original receipt";
+  const title =
+    variant === "duplicate" ? "Duplicate" : variant === "reprint" ? "Reprint" : "Original";
   const locTel = String(data.locationPhone ?? "").trim();
   const coTel = String(data.orgPhone ?? "").trim();
 
@@ -420,5 +434,20 @@ export function ThermalReceiptContent({
         <p>We appreciate your patronage.</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * One receipt on screen; Duplicate is in the DOM but hidden until print.
+ * Print job: Original, then page break, then Duplicate.
+ */
+export function ThermalReceiptPrintSlips({ data }: { data: ReceiptPrintData }) {
+  return (
+    <>
+      <ThermalReceiptContent variant="original" data={data} />
+      <div className="tr-print-second-slip">
+        <ThermalReceiptContent variant="duplicate" data={data} />
+      </div>
+    </>
   );
 }

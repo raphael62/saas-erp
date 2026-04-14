@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  ThermalReceiptContent,
+  ThermalReceiptPrintSlips,
   THERMAL_RECEIPT_GOOGLE_FONT_HREF,
   thermalReceiptPrintCss,
   thermalReceiptPrintHeadInnerHtml,
@@ -116,13 +116,13 @@ export function ReceiptPrintModal({
             {!data ? (
               <p className="text-muted-foreground">No receipt data</p>
             ) : (
-              <ThermalReceiptContent variant="original" data={data} />
+              <ThermalReceiptPrintSlips data={data} />
             )}
           </div>
         </div>
 
         <p className="border-t border-border px-4 py-2 text-center text-xs text-muted-foreground">
-          Tip: in the print dialog, set margins to minimum and select your thermal printer.
+          Tip: Preview shows one copy; Print outputs Original and Duplicate (two pages). Use minimum margins and your thermal printer.
         </p>
       </div>
     </>
