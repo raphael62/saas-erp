@@ -101,6 +101,14 @@ export default function TopNavbar({
   const userMenuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileOpen]);
+
   const displayName =
     (userName && userName.trim()) || (userEmail ? userEmail.split("@")[0] : null) || "User";
 
@@ -140,17 +148,19 @@ export default function TopNavbar({
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex min-w-0 flex-col">
+      <header className="sticky top-0 z-40 flex min-w-0 flex-col pt-[env(safe-area-inset-top)]">
         <div
-          className="flex h-12 min-w-0 items-center gap-2 px-3 text-navbar-foreground sm:gap-3 sm:px-4 lg:px-6"
+          className="flex h-12 min-h-12 min-w-0 items-center gap-2 px-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] text-navbar-foreground sm:gap-3 sm:px-4 lg:px-6"
           style={{ backgroundColor: "var(--navbar)" }}
         >
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <button
               type="button"
               onClick={() => setMobileOpen((o) => !o)}
-              className="flex items-center justify-center rounded-md p-2 hover:bg-white/10 lg:hidden"
-              aria-label="Toggle menu"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-md p-2 touch-manipulation hover:bg-white/10 md:hidden"
+              aria-expanded={mobileOpen}
+              aria-controls="dashboard-mobile-subnav"
+              aria-label="Toggle section menu"
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -160,22 +170,32 @@ export default function TopNavbar({
             </Link>
           </div>
 
-          <div className="flex min-w-0 flex-1 justify-center px-1 sm:px-4">
+          <div className="hidden min-w-0 flex-1 justify-center px-1 sm:flex sm:px-4">
             <div
               className={cn(
-                "flex w-full max-w-lg items-center gap-2 rounded-md border bg-white/10 px-3 py-1.5 text-sm",
+                "flex w-full max-w-lg items-center gap-2 rounded-md border bg-white/10 px-2 py-1.5 text-sm sm:px-3",
                 searchFocused ? "border-white/50 bg-white/15" : "border-white/25"
               )}
             >
-              <Search className="h-4 w-4 shrink-0 opacity-80" />
+              <Search className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
               <input
                 type="search"
-                placeholder="Search or press Cmd+K"
+                placeholder="Search…"
+                title="Search (keyboard shortcuts vary by browser)"
                 className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/80"
                 onFocus={() => setSearchFocused(true)}
                 onBlur={() => setSearchFocused(false)}
               />
             </div>
+          </div>
+          <div className="flex min-w-0 flex-1 justify-end sm:hidden">
+            <span
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-md border border-white/25 bg-white/10 p-2 opacity-90"
+              title="Search is available on wider screens"
+              aria-hidden
+            >
+              <Search className="h-4 w-4" />
+            </span>
           </div>
 
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
@@ -198,7 +218,7 @@ export default function TopNavbar({
                 onClick={() => setUserMenuOpen((o) => !o)}
                 aria-expanded={userMenuOpen}
                 aria-haspopup="menu"
-                className="flex max-w-[200px] items-center gap-2 rounded-md border border-white/30 bg-white/5 px-2 py-1.5 text-sm hover:bg-white/10 sm:max-w-[260px] sm:px-3"
+                className="flex max-w-[200px] min-h-11 min-w-0 items-center gap-2 rounded-md border border-white/30 bg-white/5 px-2 py-1.5 text-sm touch-manipulation hover:bg-white/10 sm:max-w-[260px] sm:px-3"
               >
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-sm font-medium">
                   {displayName.charAt(0).toUpperCase()}
@@ -215,7 +235,7 @@ export default function TopNavbar({
                 <div
                   role="menu"
                   aria-orientation="vertical"
-                  className="absolute right-0 top-[calc(100%+0.25rem)] z-50 w-56 rounded-md border border-border bg-card py-1 text-card-foreground shadow-lg"
+                  className="absolute right-0 top-[calc(100%+0.25rem)] z-50 w-[min(18rem,calc(100vw-1rem-env(safe-area-inset-right)-env(safe-area-inset-left)))] rounded-md border border-border bg-card py-1 text-card-foreground shadow-lg sm:right-0 sm:w-56"
                 >
                   <div className="border-b border-border px-3 py-2 sm:hidden">
                     <div className="truncate text-sm font-medium">{displayName}</div>
@@ -267,8 +287,11 @@ export default function TopNavbar({
           </div>
         </div>
 
-        <div className="flex min-h-0 min-w-0 border-b border-border bg-background px-2 lg:px-4">
-          <nav className="flex min-h-0 min-w-0 flex-1 gap-1 overflow-x-auto py-0 overscroll-x-contain">
+        <div className="flex min-h-0 min-w-0 border-b border-border bg-background px-1 sm:px-2 md:px-4">
+          <nav
+            className="flex min-h-0 min-w-0 flex-1 gap-0.5 overflow-x-auto py-0 overscroll-x-contain scroll-smooth [-webkit-overflow-scrolling:touch] sm:gap-1"
+            aria-label="Main modules"
+          >
             {(navItems.length > 0 ? navItems : []).map((item) => {
               const isActive =
                 item.href === "/dashboard"
@@ -282,7 +305,7 @@ export default function TopNavbar({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium transition-colors",
+                    "flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-2.5 py-2 text-sm font-medium transition-colors touch-manipulation sm:gap-2 sm:px-3 sm:py-3 md:min-h-0",
                     isActive
                       ? "border-[var(--navbar)] text-[var(--navbar)]"
                       : "border-transparent text-muted-foreground hover:text-foreground"
@@ -301,19 +324,24 @@ export default function TopNavbar({
       </header>
 
       <div
-        className={cn("fixed inset-0 z-30 bg-black/50 lg:hidden", mobileOpen ? "block" : "hidden")}
+        className={cn(
+          "fixed inset-0 z-30 bg-black/50 md:hidden",
+          mobileOpen ? "block" : "hidden"
+        )}
         style={{ top: "6rem" }}
         onClick={() => setMobileOpen(false)}
         aria-hidden
       />
       <aside
+        id="dashboard-mobile-subnav"
         className={cn(
-          "fixed left-0 z-30 h-[calc(100vh-6rem)] w-56 border-r border-border bg-muted/50 transition-transform lg:hidden",
+          "fixed left-0 z-30 flex h-[calc(100dvh-6rem-env(safe-area-inset-bottom,0px))] max-h-[calc(100vh-6rem)] w-[min(18rem,calc(100vw-env(safe-area-inset-left)-1rem))] flex-col border-r border-border bg-muted/95 shadow-lg backdrop-blur-sm transition-transform duration-200 ease-out md:hidden",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
-        style={{ top: "6rem" }}
+        style={{ top: "6rem", paddingLeft: "env(safe-area-inset-left, 0px)" }}
+        aria-hidden={!mobileOpen}
       >
-        <nav className="flex flex-col gap-1 p-3">
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overscroll-y-contain p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {currentModule.subItems.map((item) => {
             const isActive =
               item.href === "/dashboard"
@@ -325,7 +353,7 @@ export default function TopNavbar({
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--navbar)]/35",
+                  "flex min-h-[44px] items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--navbar)]/35 touch-manipulation",
                   isActive
                     ? "bg-[color-mix(in_srgb,var(--navbar)_16%,var(--muted))] font-semibold text-[var(--navbar)]"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"

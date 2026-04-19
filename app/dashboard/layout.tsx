@@ -178,7 +178,7 @@ export default async function DashboardLayout({
             />
             <div className="flex min-h-0 min-w-0 flex-1">
               <Sidebar navItems={navItems} />
-              <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4 sm:p-6">
+              <main className="min-h-0 min-w-0 flex-1 overflow-auto p-3 sm:p-4 md:p-5 lg:p-6 xl:px-8 2xl:px-10">
                 <DashboardCapabilityShell>{children}</DashboardCapabilityShell>
               </main>
             </div>

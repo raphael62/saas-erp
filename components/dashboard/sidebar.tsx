@@ -29,7 +29,7 @@ export default function Sidebar({ navItems }: SidebarProps) {
     ) ?? navItems[0] ?? DEFAULT_MODULE;
 
   return (
-    <aside className="hidden w-56 flex-col border-r border-border bg-muted/40 lg:flex">
+    <aside className="hidden w-52 shrink-0 flex-col border-r border-border bg-muted/40 md:flex md:w-56 lg:w-60">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <h2 className="font-semibold text-foreground">{currentModule.label}</h2>
         <button
@@ -53,7 +53,7 @@ export default function Sidebar({ navItems }: SidebarProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--navbar)]/35",
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--navbar)]/35 touch-manipulation md:min-h-10",
                 isActive
                   ? "bg-[color-mix(in_srgb,var(--navbar)_16%,var(--muted))] font-semibold text-[var(--navbar)]"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"

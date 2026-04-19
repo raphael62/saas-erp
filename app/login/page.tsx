@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Layers } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { validateLoginWithCode } from "./actions";
 
@@ -61,12 +62,15 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <div className="w-full max-w-sm space-y-6">
-        <div className="flex items-center justify-center gap-2">
-          <Layers className="h-8 w-8 text-foreground" strokeWidth={2} />
-          <h1 className="text-2xl font-semibold">Log in</h1>
-        </div>
+    <main className="flex min-h-dvh min-h-screen flex-col items-center justify-center bg-muted/40 px-4 py-8 sm:p-6 md:p-8">
+      <Card className="w-full max-w-sm border-border/80 shadow-md">
+        <CardHeader className="space-y-1 pb-2 text-center">
+          <div className="mx-auto flex items-center justify-center gap-2">
+            <Layers className="h-8 w-8 text-[var(--navbar)]" strokeWidth={2} aria-hidden />
+            <CardTitle className="text-2xl">Log in</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="companyCode" className="mb-1 block text-sm font-medium">
@@ -114,25 +118,29 @@ function LoginForm() {
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
           <p className="text-right text-sm">
-            <Link href="/auth/forgot-password" className="text-muted-foreground underline hover:text-foreground">
+            <Link
+              href="/auth/forgot-password"
+              className="text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
               Forgot password?
             </Link>
           </p>
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-foreground py-2 font-medium text-background hover:opacity-90 disabled:opacity-50"
+            className="w-full rounded-md bg-[var(--navbar)] py-2 font-medium text-[var(--navbar-foreground)] hover:opacity-90 disabled:opacity-50"
           >
             {loading ? "Signing in…" : "Sign in"}
           </button>
         </form>
-        <p className="text-center text-sm text-muted-foreground">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{" "}
-          <Link href="/register" className="underline">
+          <Link href="/register" className="font-medium text-[var(--navbar)] underline underline-offset-2 hover:opacity-90">
             Sign up
           </Link>
         </p>
-      </div>
+        </CardContent>
+      </Card>
     </main>
   );
 }
@@ -141,13 +149,13 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-screen flex-col items-center justify-center p-8">
-          <div className="max-w-sm animate-pulse space-y-6">
-            <div className="h-8 rounded bg-muted" />
+        <main className="flex min-h-dvh min-h-screen flex-col items-center justify-center bg-muted/40 px-4 py-8 sm:p-6 md:p-8">
+          <div className="w-full max-w-sm animate-pulse rounded-xl border border-border bg-card p-6 shadow-md">
+            <div className="mx-auto mb-6 h-8 w-40 rounded bg-muted" />
             <div className="space-y-4">
-              <div className="h-10 rounded bg-muted" />
-              <div className="h-10 rounded bg-muted" />
-              <div className="h-10 rounded bg-muted" />
+              <div className="h-10 rounded-md bg-muted" />
+              <div className="h-10 rounded-md bg-muted" />
+              <div className="h-10 rounded-md bg-muted" />
             </div>
           </div>
         </main>
