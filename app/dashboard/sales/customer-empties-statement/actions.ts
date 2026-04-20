@@ -419,7 +419,7 @@ export async function getCustomerEmptiesTypeTransactions(
       reference: invoiceNo || invoiceId,
       expected: 0,
       sold_out: 0,
-      edit_path: `/dashboard/sales/sales-invoices?edit=${encodeURIComponent(invoiceId)}`,
+      edit_path: `/invoice/${encodeURIComponent(invoiceId)}`,
     };
     if (info.isEmpties) existing.sold_out = clamp4(existing.sold_out + qty);
     else existing.expected = clamp4(existing.expected + qty);
@@ -462,7 +462,7 @@ export async function getCustomerEmptiesTypeTransactions(
       tx_date: receiveDate,
       reference: receiveNo || receiveId,
       received: 0,
-      edit_path: `/dashboard/sales/empties-receive?edit=${encodeURIComponent(receiveId)}`,
+      edit_path: `/empties-receive/${encodeURIComponent(receiveId)}`,
     };
     existing.received = clamp4(existing.received + qty);
     receiveAgg.set(receiveId, existing);

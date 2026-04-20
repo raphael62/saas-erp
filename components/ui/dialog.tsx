@@ -16,6 +16,8 @@ interface DialogProps {
   showGearIcon?: boolean;
   contentClassName?: string;
   bodyClassName?: string;
+  /** Render form content inline (no backdrop, no portal, no header). Used inside popup iframes. */
+  inline?: boolean;
 }
 
 export function Dialog({
@@ -27,6 +29,7 @@ export function Dialog({
   showGearIcon = true,
   contentClassName,
   bodyClassName,
+  inline = false,
 }: DialogProps) {
   const suppressBackdropCloseUntilRef = React.useRef(0);
 
@@ -37,6 +40,15 @@ export function Dialog({
   }, [open]);
 
   if (!open) return null;
+
+  if (inline) {
+    return (
+      <div className={cn("w-full bg-background text-foreground", contentClassName)}>
+        <div className={cn("overflow-auto p-4", bodyClassName)}>{children}</div>
+      </div>
+    );
+  }
+
   if (typeof document === "undefined") return null;
 
   return createPortal(

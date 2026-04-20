@@ -118,6 +118,7 @@ export function EmptiesReceiveList({
   locations = [],
   products = [],
   editId,
+  skipHistoryReplace = false,
 }: {
   receives: Receive[];
   lines: ReceiveLine[];
@@ -125,6 +126,7 @@ export function EmptiesReceiveList({
   locations: Location[];
   products: Product[];
   editId?: string;
+  skipHistoryReplace?: boolean;
 }) {
   const router = useRouter();
   const openEditId = editId && receives.some((r) => r.id === editId) ? editId : null;
@@ -206,7 +208,7 @@ export function EmptiesReceiveList({
   const editing = filtered.find((x) => x.id === editingId) ?? null;
 
   useEffect(() => {
-    if (openEditId) window.history.replaceState(null, "", "/dashboard/sales/empties-receive");
+    if (openEditId && !skipHistoryReplace) window.history.replaceState(null, "", "/dashboard/sales/empties-receive");
   }, [openEditId]);
 
   async function handleDelete() {
@@ -443,7 +445,7 @@ export function EmptiesReceiveList({
   );
 }
 
-function EmptiesReceiveFormDialog({
+export function EmptiesReceiveFormDialog({
   open,
   onOpenChange,
   onSaved,
@@ -452,6 +454,7 @@ function EmptiesReceiveFormDialog({
   products = [],
   initialReceive = null,
   initialLines = [],
+  inline = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -461,6 +464,7 @@ function EmptiesReceiveFormDialog({
   products?: Product[];
   initialReceive?: Receive | null;
   initialLines?: ReceiveLine[];
+  inline?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -679,6 +683,7 @@ function EmptiesReceiveFormDialog({
       title={initialReceive?.id ? "Edit Empties Receive" : "New Empties Receive"}
       contentClassName="max-w-[1060px]"
       bodyClassName="max-h-[86vh] overflow-y-auto p-3"
+      inline={inline}
     >
       <div className="space-y-3 text-sm">
         {error && <p className="rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">{error}</p>}

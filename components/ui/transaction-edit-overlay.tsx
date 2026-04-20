@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -26,13 +27,20 @@ export function TransactionEditOverlay({ path, onClose }: Props) {
         onClose();
       }
     };
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "close-overlay") onClose();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("message", onMessage);
+    };
   }, [path, onClose]);
 
-  if (!path || !src) return null;
+  if (!path || !src || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 z-[100] bg-black/50 print:hidden"
@@ -50,12 +58,14 @@ export function TransactionEditOverlay({ path, onClose }: Props) {
           className="flex shrink-0 items-center justify-between gap-2 px-3 py-2.5 text-[var(--navbar-foreground)]"
           style={{ backgroundColor: "var(--navbar)" }}
         >
-          <span className="text-sm font-semibold">Edit transaction</span>
+          <span className="text-sm font-semibold">
+            {path?.startsWith("/invoice/") ? "Edit Sales Invoice" : path?.startsWith("/payment/") ? "Edit Payment" : "Edit Transaction"}
+          </span>
           <Button
             type="button"
             size="sm"
             variant="outline"
-            className="border-white/40 bg-white/10 text-[var(--navbar-foreground)] hover:bg-white/20"
+            className="border-white/40 bg-white/10 text-navbar-foreground hover:bg-white/20"
             onClick={onClose}
           >
             <X className="mr-1 h-4 w-4" />
@@ -64,6 +74,7 @@ export function TransactionEditOverlay({ path, onClose }: Props) {
         </div>
         <iframe key={src} title="Edit transaction" className="min-h-0 w-full flex-1 border-0 bg-background" src={src} />
       </div>
-    </>
+    </>,
+    document.body
   );
 }

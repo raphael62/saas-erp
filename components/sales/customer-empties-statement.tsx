@@ -9,6 +9,7 @@ import {
   getCustomerEmptiesTypeTransactions,
 } from "@/app/dashboard/sales/customer-empties-statement/actions";
 import { SchemaCacheReloadButton } from "@/components/ui/schema-cache-reload";
+import { TransactionEditOverlay } from "@/components/ui/transaction-edit-overlay";
 
 type DetailRow = {
   empties_type: string;
@@ -75,6 +76,7 @@ export function CustomerEmptiesStatement({ orgName }: { orgName?: string }) {
   const [txError, setTxError] = useState<string | null>(null);
   const [txRows, setTxRows] = useState<TransactionRow[]>([]);
   const [txOpening, setTxOpening] = useState(0);
+  const [editOverlayPath, setEditOverlayPath] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
@@ -373,7 +375,7 @@ export function CustomerEmptiesStatement({ orgName }: { orgName?: string }) {
       >
         <div className="space-y-2">
           <p className="rounded bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800">
-            Click the reference number to open the invoice or empties receipt for editing in a new tab. Balance = Opening + Expected &minus; Sold Out &minus; Received.
+            Click the reference number to open the invoice or empties receipt for editing. Balance = Opening + Expected &minus; Sold Out &minus; Received.
           </p>
 
           {txError && (
@@ -439,7 +441,7 @@ export function CustomerEmptiesStatement({ orgName }: { orgName?: string }) {
                             <button
                               type="button"
                               className="text-[var(--navbar)] hover:underline"
-                              onClick={() => window.open(row.edit_path, "_blank", "noopener,noreferrer")}
+                              onClick={() => setEditOverlayPath(row.edit_path)}
                             >
                               {row.reference}
                             </button>
@@ -494,6 +496,8 @@ export function CustomerEmptiesStatement({ orgName }: { orgName?: string }) {
           </div>
         </div>
       </Dialog>
+
+      <TransactionEditOverlay path={editOverlayPath} onClose={() => setEditOverlayPath(null)} />
     </div>
   );
 }

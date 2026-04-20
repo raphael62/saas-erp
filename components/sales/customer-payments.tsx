@@ -13,7 +13,7 @@ import {
 } from "@/app/dashboard/sales/customer-payments/actions";
 import { useSalesCapabilities } from "@/components/dashboard/route-capability-provider";
 
-type Customer = {
+export type Customer = {
   id: string;
   name?: string | null;
   tax_id?: string | null;
@@ -21,12 +21,12 @@ type Customer = {
   contact_person?: string | null;
 };
 
-type PaymentMethod = {
+export type PaymentMethod = {
   code?: string | null;
   name?: string | null;
 };
 
-type Payment = {
+export type Payment = {
   id: string;
   payment_no: string;
   customer_id: string;
@@ -98,6 +98,7 @@ export function CustomerPayments({
   paymentsMissing = false,
   schemaCacheStale = false,
   editId,
+  skipHistoryReplace = false,
 }: {
   payments: Payment[];
   customers: Customer[];
@@ -106,6 +107,7 @@ export function CustomerPayments({
   paymentsMissing?: boolean;
   schemaCacheStale?: boolean;
   editId?: string;
+  skipHistoryReplace?: boolean;
 }) {
   const caps = useSalesCapabilities();
   const [search, setSearch] = useState("");
@@ -119,8 +121,8 @@ export function CustomerPayments({
   const [showBatch, setShowBatch] = useState(false);
 
   useEffect(() => {
-    if (openEditId) window.history.replaceState(null, "", "/dashboard/sales/customer-payments");
-  }, [openEditId]);
+    if (openEditId && !skipHistoryReplace) window.history.replaceState(null, "", "/dashboard/sales/customer-payments");
+  }, [openEditId, skipHistoryReplace]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -376,7 +378,7 @@ export function CustomerPayments({
   );
 }
 
-function SinglePaymentDialog({
+export function SinglePaymentDialog({
   open,
   onOpenChange,
   customers,
@@ -384,6 +386,7 @@ function SinglePaymentDialog({
   paymentAccounts,
   initialPayment,
   onSaved,
+  inline = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -392,6 +395,7 @@ function SinglePaymentDialog({
   paymentAccounts: string[];
   initialPayment: Payment | null;
   onSaved: () => void;
+  inline?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -486,6 +490,7 @@ function SinglePaymentDialog({
       showGearIcon={false}
       contentClassName="max-w-[920px] text-sm"
       bodyClassName="max-h-[80vh] overflow-auto p-4"
+      inline={inline}
     >
       <div className="space-y-3 text-sm">
         {error && <p className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive">{error}</p>}

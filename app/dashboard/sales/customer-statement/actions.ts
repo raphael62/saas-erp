@@ -236,7 +236,7 @@ export async function getCustomerStatementTransactions(
       description: "Sales Invoice",
       debit: clamp2(Number(row.grand_total ?? 0)),
       credit: 0,
-      edit_path: `/dashboard/sales/sales-invoices?edit=${encodeURIComponent(id)}`,
+      edit_path: `/invoice/${encodeURIComponent(id)}`,
     });
   }
 
@@ -260,7 +260,7 @@ export async function getCustomerStatementTransactions(
         description: `Payment (${method})`,
         debit: 0,
         credit: clamp2(Number(row.amount ?? 0)),
-        edit_path: `/dashboard/sales/customer-payments?edit=${encodeURIComponent(id)}`,
+        edit_path: `/payment/${encodeURIComponent(id)}`,
       });
     }
   }

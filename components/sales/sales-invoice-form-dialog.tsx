@@ -290,6 +290,7 @@ export function SalesInvoiceFormDialog({
   initialInvoice = null,
   initialLines = [],
   organizationId,
+  inline = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -312,6 +313,7 @@ export function SalesInvoiceFormDialog({
   loadOutSheetLines?: LoadOutSheetLine[];
   initialInvoice?: Invoice | null;
   initialLines?: InvoiceLine[];
+  inline?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1060,6 +1062,7 @@ export function SalesInvoiceFormDialog({
       title={initialInvoice?.id ? "Edit Sales Invoice" : "New Sales Invoice"}
       contentClassName="max-w-[1120px] text-sm"
       bodyClassName="max-h-none overflow-visible p-4"
+      inline={inline}
     >
       <div className="space-y-2">
         {error && <p className="rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">{error}</p>}

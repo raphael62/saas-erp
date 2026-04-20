@@ -209,6 +209,7 @@ export function SalesInvoiceList({
   loadOutSheets = [],
   loadOutSheetLines = [],
   editId,
+  skipHistoryReplace = false,
 }: {
   organizationId: string;
   invoices: Invoice[];
@@ -227,6 +228,7 @@ export function SalesInvoiceList({
   loadOutSheets?: LoadOutSheet[];
   loadOutSheetLines?: LoadOutSheetLine[];
   editId?: string;
+  skipHistoryReplace?: boolean;
 }) {
   const router = useRouter();
   const caps = useSalesCapabilities();
@@ -315,8 +317,8 @@ export function SalesInvoiceList({
   const editing = filtered.find((x) => x.id === editingId) ?? null;
 
   useEffect(() => {
-    if (openEditId) window.history.replaceState(null, "", "/dashboard/sales/sales-invoices");
-  }, [openEditId]);
+    if (openEditId && !skipHistoryReplace) window.history.replaceState(null, "", "/dashboard/sales/sales-invoices");
+  }, [openEditId, skipHistoryReplace]);
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) {
