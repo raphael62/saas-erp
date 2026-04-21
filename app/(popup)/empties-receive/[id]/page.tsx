@@ -58,7 +58,7 @@ export default async function EmptiesReceivePopupPage({
 
   return (
     <EmptiesReceivePopupClient
-      initialReceive={receiveRes.data as Parameters<typeof EmptiesReceivePopupClient>[0]["initialReceive"]}
+      initialReceive={receiveRes.data as unknown as Parameters<typeof EmptiesReceivePopupClient>[0]["initialReceive"]}
       initialLines={(linesRes.data ?? []) as Parameters<typeof EmptiesReceivePopupClient>[0]["initialLines"]}
       customers={(customersRes.data ?? []) as Parameters<typeof EmptiesReceivePopupClient>[0]["customers"]}
       locations={filterLocationsByScope(scope, locsRaw) as Parameters<typeof EmptiesReceivePopupClient>[0]["locations"]}
