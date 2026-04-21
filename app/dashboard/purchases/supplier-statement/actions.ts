@@ -498,7 +498,7 @@ export async function getSupplierStatementTransactions(
         reference: supRef,
         po_number: poNum,
         description: "Purchase Invoice",
-        edit_path: `/dashboard/purchases/purchase-invoices?edit=${encodeURIComponent(id)}`,
+        edit_path: `/purchase-invoice/${encodeURIComponent(id)}`,
       });
     }
 
@@ -512,7 +512,7 @@ export async function getSupplierStatementTransactions(
         reference: emptiesRef,
         po_number: poNum,
         description: "Empties Invoice",
-        edit_path: `/dashboard/purchases/purchase-invoices?edit=${encodeURIComponent(id)}`,
+        edit_path: `/purchase-invoice/${encodeURIComponent(id)}`,
       });
     }
 
@@ -527,7 +527,7 @@ export async function getSupplierStatementTransactions(
         reference: supRef,
         po_number: poNum,
         description: "Empties Purchase",
-        edit_path: `/dashboard/purchases/purchase-invoices?edit=${encodeURIComponent(id)}`,
+        edit_path: `/purchase-invoice/${encodeURIComponent(id)}`,
       });
     }
 
@@ -542,7 +542,7 @@ export async function getSupplierStatementTransactions(
         reference: supRef,
         po_number: poNum,
         description: "Empties Purchase",
-        edit_path: `/dashboard/purchases/purchase-invoices?edit=${encodeURIComponent(id)}`,
+        edit_path: `/purchase-invoice/${encodeURIComponent(id)}`,
       });
     }
   }
@@ -566,7 +566,7 @@ export async function getSupplierStatementTransactions(
         reference: String(row.payment_no ?? id),
         po_number: null,
         description: "Payments",
-        edit_path: `/dashboard/accounting/supplier-payments?edit=${encodeURIComponent(id)}`,
+        edit_path: `/supplier-payment/${encodeURIComponent(id)}`,
       });
     }
   }
@@ -595,7 +595,7 @@ export async function getSupplierStatementTransactions(
         reference: ref,
         po_number: poNum,
         description: "Empties Dispatch",
-        edit_path: `/dashboard/purchases/empties-dispatch?edit=${encodeURIComponent(id)}`,
+        edit_path: `/empties-dispatch/${encodeURIComponent(id)}`,
       });
     }
   }

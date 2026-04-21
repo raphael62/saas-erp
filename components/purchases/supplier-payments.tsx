@@ -332,7 +332,7 @@ export function SupplierPayments(props: SupplierPaymentsProps) {
   );
 }
 
-function SinglePaymentDialog({
+export function SinglePaymentDialog({
   open,
   onOpenChange,
   suppliers,
@@ -340,6 +340,7 @@ function SinglePaymentDialog({
   paymentAccounts,
   initialPayment,
   onSaved,
+  inline = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -348,6 +349,7 @@ function SinglePaymentDialog({
   paymentAccounts: string[];
   initialPayment: Payment | null;
   onSaved: () => void;
+  inline?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -436,6 +438,7 @@ function SinglePaymentDialog({
       showGearIcon={false}
       contentClassName="max-w-[920px] text-sm"
       bodyClassName="max-h-[80vh] overflow-auto p-4"
+      inline={inline}
     >
       <div className="space-y-3 text-sm">
         {error && <p className="rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-destructive">{error}</p>}

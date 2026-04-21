@@ -21,7 +21,6 @@ import {
   type SupplierStatementFilter,
   type SupplierTxRow,
 } from "@/app/dashboard/purchases/supplier-statement/actions";
-import { queueSupplierStatementEditNavigation } from "@/lib/statement-edit-bridge";
 
 /** Match dashboard / globals.css theme (`--navbar`). */
 const NAVBAR = "var(--navbar)";
@@ -592,7 +591,6 @@ export function SupplierStatement({ orgName }: { orgName?: string }) {
                           }
                           e.preventDefault();
                           e.stopPropagation();
-                          queueSupplierStatementEditNavigation(row.edit_path);
                           setEditOverlayPath(row.edit_path);
                         }}
                       >

@@ -242,6 +242,7 @@ export function PurchaseInvoiceFormDialog({
   initialInvoice,
   initialLines,
   organizationId,
+  inline = false,
 }: {
   open: boolean;
   onOpenChange: (next: boolean) => void;
@@ -255,6 +256,7 @@ export function PurchaseInvoiceFormDialog({
   initialInvoice: Invoice | null;
   initialLines: InvoiceLine[];
   organizationId: string;
+  inline?: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -747,6 +749,7 @@ export function PurchaseInvoiceFormDialog({
       showGearIcon={false}
       contentClassName="max-w-[1220px]"
       bodyClassName="max-h-[86vh] overflow-y-auto p-3"
+      inline={inline}
     >
       <form ref={formRef} onSubmit={(e) => handleSubmit(e, false)} className="space-y-3 text-sm">
         <input type="hidden" name="id" value={id} />

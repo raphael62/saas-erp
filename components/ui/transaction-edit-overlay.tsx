@@ -59,7 +59,12 @@ export function TransactionEditOverlay({ path, onClose }: Props) {
           style={{ backgroundColor: "var(--navbar)" }}
         >
           <span className="text-sm font-semibold">
-            {path?.startsWith("/invoice/") ? "Edit Sales Invoice" : path?.startsWith("/payment/") ? "Edit Payment" : "Edit Transaction"}
+            {path?.startsWith("/invoice/") ? "Edit Sales Invoice"
+              : path?.startsWith("/payment/") ? "Edit Payment"
+              : path?.startsWith("/purchase-invoice/") ? "Edit Purchase Invoice"
+              : path?.startsWith("/supplier-payment/") ? "Edit Supplier Payment"
+              : path?.startsWith("/empties-dispatch/") ? "Edit Empties Dispatch"
+              : "Edit Transaction"}
           </span>
           <Button
             type="button"

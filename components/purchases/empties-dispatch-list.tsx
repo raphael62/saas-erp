@@ -543,7 +543,7 @@ export function EmptiesDispatchList(props: EmptiesDispatchListProps) {
   );
 }
 
-function EmptiesDispatchFormDialog({
+export function EmptiesDispatchFormDialog({
   open,
   onOpenChange,
   onSaved,
@@ -554,6 +554,7 @@ function EmptiesDispatchFormDialog({
   priceListItems = [],
   initialDispatch = null,
   initialLines = [],
+  inline = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -565,6 +566,7 @@ function EmptiesDispatchFormDialog({
   priceListItems?: PriceListItem[];
   initialDispatch?: Dispatch | null;
   initialLines?: DispatchLine[];
+  inline?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -825,6 +827,7 @@ function EmptiesDispatchFormDialog({
       title={initialDispatch?.id ? "Edit Empties Dispatch" : "New Empties Dispatch"}
       contentClassName="max-w-[1080px] text-sm"
       bodyClassName="max-h-none overflow-visible p-4"
+      inline={inline}
     >
       <div className="space-y-2">
         {error && <p className="rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">{error}</p>}
